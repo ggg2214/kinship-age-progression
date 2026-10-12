@@ -16,3 +16,4 @@ pinned: false
 - `POST /api/timelapse`: 10세부터 60세까지 연속 성장 타임랩스 생성
 - `GET /api/status`: 서버 상태 및 GPU 가용성 확인
 - `GET /docs`: Swagger 대화형 API 문서
+
