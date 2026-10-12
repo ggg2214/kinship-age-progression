@@ -94,6 +94,13 @@
         <input type="range" id="targetAgeSlider" min="10" max="75" value="30">
       </div>
 
+      <div style="margin: 14px 0 6px 0; display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="chkEnhance" style="width:16px; height:16px; accent-color:var(--accent-cyan); cursor:pointer;">
+        <label for="chkEnhance" style="font-size:13px; color:var(--text-muted); cursor:pointer;">
+          <b style="color:var(--accent-cyan)">AI 안면 복원 및 선명화 (Face Enhancement)</b> : 흐릿하거나 손상된 오래된 아동 사진 자동 선명화
+        </label>
+      </div>
+
       <div class="btn-row">
         <button class="primary" id="btnPredict">나이 변환 실행 (Single Age Prediction)</button>
         <button class="secondary" id="btnTimelapse">성장 타임랩스 생성 (10~60세)</button>
@@ -270,6 +277,7 @@
       if (motherFile) formData.append('mother_file', motherFile);
       formData.append('source_age', sourceSlider.value);
       formData.append('target_age', targetSlider.value);
+      formData.append('enhance_face', document.getElementById('chkEnhance').checked);
 
       spinner.style.display = 'block';
       resultsSection.classList.remove('active');

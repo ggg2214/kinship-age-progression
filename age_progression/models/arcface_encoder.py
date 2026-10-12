@@ -1,3 +1,5 @@
+import os
+from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -33,6 +35,38 @@ class ArcFaceEncoder(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(resnet.fc.in_features, embed_dim, bias=False)
         self.bn_fc = nn.BatchNorm1d(embed_dim)
+
+        if pretrained:
+            self.load_pretrained_weights()
+
+    def load_pretrained_weights(self, weights_path: Optional[str] = None):
+        """
+        Loads pretrained ArcFace / Face Recognition weights.
+        Supports loading from local checkpoint file or torchvision backbone.
+        """
+        if weights_path and os.path.exists(weights_path):
+            print(f"[INFO] Loading ArcFace weights from: {weights_path}")
+            state_dict = torch.load(weights_path, map_location="cpu")
+            # Filter compatible keys
+            model_dict = self.state_dict()
+            matched = {k: v for k, v in state_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
+            model_dict.update(matched)
+            self.load_state_dict(model_dict)
+            print(f"[OK] Successfully loaded {len(matched)} / {len(model_dict)} layers from ArcFace checkpoint.")
+        else:
+            try:
+                # Load official ResNet-50 ImageNet pretrained weights into backbone
+                weights = models.ResNet50_Weights.DEFAULT
+                resnet = models.resnet50(weights=weights)
+                self.conv1.load_state_dict(resnet.conv1.state_dict())
+                self.bn1.load_state_dict(resnet.bn1.state_dict())
+                self.layer1.load_state_dict(resnet.layer1.state_dict())
+                self.layer2.load_state_dict(resnet.layer2.state_dict())
+                self.layer3.load_state_dict(resnet.layer3.state_dict())
+                self.layer4.load_state_dict(resnet.layer4.state_dict())
+                print("[OK] ArcFace backbone initialized with pretrained feature weights.")
+            except Exception as e:
+                print(f"[WARNING] Could not load pretrained weights: {e}. Using current weights.")
 
     def forward(self, x: torch.Tensor, return_spatial: bool = False):
         """

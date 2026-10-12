@@ -7,6 +7,7 @@ import numpy as np
 from .config import AgeProgressionConfig
 from .models.full_model import AgeProgressionModel
 from .data.transforms import RetinaFacePreprocess
+from .data.face_enhancer import FaceEnhancer
 
 
 class AgeProgressionPipeline:
@@ -36,6 +37,7 @@ class AgeProgressionPipeline:
 
         self.model.eval()
         self.preprocessor = RetinaFacePreprocess(target_size=self.config.image_size)
+        self.enhancer = FaceEnhancer()
 
     def _prepare_tensor(self, img_input: Optional[Union[str, Image.Image, torch.Tensor]]) -> Optional[torch.Tensor]:
         if img_input is None:
@@ -65,7 +67,8 @@ class AgeProgressionPipeline:
         target_age: float,
         father: Optional[Union[str, Image.Image, torch.Tensor]] = None,
         mother: Optional[Union[str, Image.Image, torch.Tensor]] = None,
-        source_age: Optional[float] = None
+        source_age: Optional[float] = None,
+        enhance_face: bool = False
     ) -> Tuple[Image.Image, dict]:
         """
         Executes age progression.
@@ -76,10 +79,14 @@ class AgeProgressionPipeline:
             father: Optional father face
             mother: Optional mother face
             source_age: Optional child source age (e.g. 5)
+            enhance_face: If True, deblur and restore child photo first
         Returns:
             aged_image: PIL Image of predicted face at target age
             metadata: dictionary of intermediate embeddings and attention weights
         """
+        if enhance_face and not isinstance(child, torch.Tensor):
+            child = self.enhancer.enhance(child)
+
         child_tensor = self._prepare_tensor(child)
         father_tensor = self._prepare_tensor(father)
         mother_tensor = self._prepare_tensor(mother)

@@ -1,0 +1,38 @@
+[
+  {
+    "sample_id": "triplet_0001",
+    "child_path": "data_utkface\\3_0_0_sample00.jpg",
+    "father_path": "data_utkface\\25_0_0_sample04.jpg",
+    "mother_path": "data_utkface\\28_1_0_sample05.jpg",
+    "source_age": 3.0,
+    "target_age": 35.0,
+    "ground_truth_path": "data_utkface\\35_1_0_sample07.jpg"
+  },
+  {
+    "sample_id": "triplet_0002",
+    "child_path": "data_utkface\\5_1_0_sample01.jpg",
+    "father_path": "data_utkface\\32_0_0_sample06.jpg",
+    "mother_path": "data_utkface\\35_1_0_sample07.jpg",
+    "source_age": 5.0,
+    "target_age": 40.0,
+    "ground_truth_path": "data_utkface\\40_0_0_sample08.jpg"
+  },
+  {
+    "sample_id": "triplet_0003",
+    "child_path": "data_utkface\\7_0_0_sample02.jpg",
+    "father_path": "data_utkface\\40_0_0_sample08.jpg",
+    "mother_path": "data_utkface\\42_1_0_sample09.jpg",
+    "source_age": 7.0,
+    "target_age": 42.0,
+    "ground_truth_path": "data_utkface\\42_1_0_sample09.jpg"
+  },
+  {
+    "sample_id": "triplet_0004",
+    "child_path": "data_utkface\\10_1_0_sample03.jpg",
+    "father_path": "data_utkface\\50_0_0_sample10.jpg",
+    "mother_path": "data_utkface\\55_1_0_sample11.jpg",
+    "source_age": 10.0,
+    "target_age": 50.0,
+    "ground_truth_path": "data_utkface\\50_0_0_sample10.jpg"
+  }
+]

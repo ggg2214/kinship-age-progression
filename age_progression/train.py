@@ -1,19 +1,27 @@
 import os
 import sys
 
+# Ensure project root is in sys.path
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(_current_dir)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 # Ensure UTF-8 output encoding on Windows terminals
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 import argparse
 import time
+from typing import Optional
 import torch
 from torch.utils.data import DataLoader
 
+import json
 from age_progression.config import AgeProgressionConfig
 from age_progression.models.full_model import AgeProgressionModel
 from age_progression.losses.total_loss import TotalAgeProgressionLoss
-from age_progression.data.dataset import MockKinshipAgeDataset
+from age_progression.data.dataset import KinshipAgeDataset, MockKinshipAgeDataset
 
 
 def train_age_progression(
@@ -22,6 +30,7 @@ def train_age_progression(
     lr: float = 2e-4,
     image_size: int = 256,
     device: str = "cpu",
+    manifest_path: Optional[str] = None,
     checkpoint_dir: str = "checkpoints"
 ):
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -35,8 +44,17 @@ def train_age_progression(
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
-    # Use dataset (Mock dataset for quick start / verification)
-    dataset = MockKinshipAgeDataset(num_samples=16, image_size=config.image_size)
+    # Use dataset (Real dataset if manifest provided and exists, otherwise Mock)
+    if manifest_path and os.path.exists(manifest_path):
+        print(f"[INFO] Loading real dataset manifest: {manifest_path}...", flush=True)
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            samples = json.load(f)
+        dataset = KinshipAgeDataset(samples=samples, image_size=config.image_size, is_train=True)
+        print(f"[INFO] Successfully loaded {len(dataset)} real triplet samples.", flush=True)
+    else:
+        print("[INFO] No manifest provided. Using synthetic MockKinshipAgeDataset for smoke testing.", flush=True)
+        dataset = MockKinshipAgeDataset(num_samples=16, image_size=config.image_size)
+
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     print(f"[INFO] Starting training for {epochs} epochs ({len(loader)} batches/epoch)...", flush=True)
@@ -102,6 +120,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--image_size", type=int, default=256)
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--manifest", type=str, default=None, help="Path to real dataset JSON manifest")
     args = parser.parse_args()
 
     train_age_progression(
@@ -109,5 +128,6 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         lr=args.lr,
         image_size=args.image_size,
-        device=args.device
+        device=args.device,
+        manifest_path=args.manifest
     )

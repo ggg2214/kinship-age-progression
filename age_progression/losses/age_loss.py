@@ -11,7 +11,7 @@ class AgeEstimator(nn.Module):
     Predicts continuous age in years [0, 100] from face images.
     """
 
-    def __init__(self, pretrained: bool = False):
+    def __init__(self, pretrained: bool = True, checkpoint_path: Optional[str] = None):
         super().__init__()
         backbone = models.resnet18(weights=models.ResNet18_Weights.DEFAULT if pretrained else None)
         self.features = nn.Sequential(

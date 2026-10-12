@@ -90,7 +90,8 @@ async def predict_aged_face(
     father_file: Optional[UploadFile] = File(None),
     mother_file: Optional[UploadFile] = File(None),
     target_age: float = Form(30.0),
-    source_age: float = Form(5.0)
+    source_age: float = Form(5.0),
+    enhance_face: bool = Form(False)
 ):
     """
     Synthesizes predicted face at target_age using child and optional parent photos.
@@ -108,7 +109,8 @@ async def predict_aged_face(
         target_age=target_age,
         father=father_img,
         mother=mother_img,
-        source_age=source_age
+        source_age=source_age,
+        enhance_face=enhance_face
     )
 
     # Compute identity similarity between child and predicted face

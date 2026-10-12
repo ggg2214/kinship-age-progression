@@ -4,6 +4,7 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ggg2214/kinship-age-progression/blob/main/notebooks/train_colab.ipynb)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -65,13 +66,27 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install fastapi uvicorn python-multipart Pillow
 ```
 
-### 2. 대화형 웹 인터페이스 실행 (Web UI)
+### 2. Google Colab 무료 T4 GPU 원클릭 학습 (Recommended)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ggg2214/kinship-age-progression/blob/main/notebooks/train_colab.ipynb)
+- 상단 뱃지를 클릭하여 Google Colab에서 256x256 해상도 대규모 모델 학습 및 Google Drive 가중치 백업을 바로 실행할 수 있습니다.
+
+### 3. 실제 데이터셋 수집 및 Triplet 매핑 (Dataset Setup)
+```bash
+python age_progression/data/download_datasets.py --data-dir data_utkface
+```
+
+### 4. 저화질 아동 사진 복원 및 선명화 (Face Enhancement)
+```bash
+python age_progression/data/face_enhancer.py --input blurry_child.jpg --output enhanced_child.png
+```
+
+### 5. 대화형 웹 인터페이스 실행 (Web UI)
 ```bash
 python age_progression/web_app.py
 ```
-브라우저에서 `http://127.0.0.1:8000` 접속
+브라우저에서 `http://127.0.0.1:8000` 접속 (웹에서 AI 안면 복원 토글 지원)
 
-### 3. 연령별 타임랩스 배너 생성 CLI
+### 6. 연령별 타임랩스 배너 생성 CLI
 ```bash
 python age_progression/visualize_samples.py \
   --child sample_data/family_001/child_age06.jpg \
@@ -81,7 +96,7 @@ python age_progression/visualize_samples.py \
   --output outputs/my_timelapse.png
 ```
 
-### 4. 소거 연구(Ablation Study) 벤치마크 평가
+### 7. 소거 연구(Ablation Study) 벤치마크 평가
 ```bash
 python age_progression/evaluate.py --num-samples 16
 ```
@@ -92,17 +107,21 @@ python age_progression/evaluate.py --num-samples 16
 
 ```
 .
+├── notebooks/
+│   └── train_colab.ipynb         # [Colab] Google Colab 무료 T4 GPU 원클릭 학습 노트북
 ├── age_progression/
 │   ├── config.py                 # 하이퍼파라미터 및 손실 가중치 설정
 │   ├── demo.py                   # 모델 초기화, Forward, Multi-loss 통합 검증
 │   ├── evaluate.py               # 정량 평가 및 소거 연구(Ablation) 벤치마크
-│   ├── inference.py              # 나이 변환 엔드투엔드 추론 파이프라인
+│   ├── inference.py              # 나이 변환 엔드투엔드 추론 파이프라인 (복원 지원)
 │   ├── train.py                  # 모델 학습 루프 및 체크포인트 저장기
 │   ├── visualize_samples.py      # 연령대별 연속 변환 그리드 생성 스크립트
 │   ├── web_app.py                # FastAPI 웹 애플리케이션 및 REST API
-│   ├── static/                   # 웹 대시보드 프론트엔드 (HTML/CSS)
+│   ├── static/                   # 웹 대시보드 프론트엔드 (HTML/CSS, 복원 토글)
 │   ├── data/
 │   │   ├── dataset.py            # Triplet 데이터셋 로더
+│   │   ├── download_datasets.py  # 실제 UTKFace/연령 데이터셋 다운로더 & 매핑기
+│   │   ├── face_enhancer.py      # 저화질/블러 아동 사진 복원 및 선명화기
 │   │   ├── prepare_dataset.py    # 데이터셋 파싱 및 매니페스트 빌더
 │   │   └── transforms.py         # 얼굴 정렬 및 전처리 파이프라인
 │   ├── losses/                   # 4단계 복합 손실 함수 (Recon, ID, Age, Kinship)
@@ -116,3 +135,4 @@ python age_progression/evaluate.py --num-samples 16
 
 ## 📄 라이선스 (License)
 MIT License
+
