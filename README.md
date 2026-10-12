@@ -70,23 +70,51 @@ pip install fastapi uvicorn python-multipart Pillow
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ggg2214/kinship-age-progression/blob/main/notebooks/train_colab.ipynb)
 - 상단 뱃지를 클릭하여 Google Colab에서 256x256 해상도 대규모 모델 학습 및 Google Drive 가중치 백업을 바로 실행할 수 있습니다.
 
-### 3. 실제 데이터셋 수집 및 Triplet 매핑 (Dataset Setup)
+### 3. 실제 데이터셋 수집 및 파싱 파이프라인 (Real Datasets)
+본 프로젝트는 **실제 안면 및 혈연 데이터셋**을 수집하고 학습하기 위한 전용 파이프라인을 내장하고 있습니다:
+
+1. **FG-NET 종단면 실제 노화 데이터 (Longitudinal Face Aging)**:
+   - 동일 인물의 유아기(0~12세)와 성인기(18~69세) 사진 1,002장, 1,195개 페어를 자동 다운로드 및 파싱
+   ```bash
+   python age_progression/data/download_fgnet.py
+   ```
+
+2. **AI Hub (aihub.or.kr) 한국인 안면 및 가족 데이터셋**:
+   - 한국인 가족 안면 데이터(Kinship Guided), 한국인 연령대별 안면 데이터, K-Face 지원
+   - `aihubshell` 다운로드 안내 및 자동 Triplet 파싱:
+   ```bash
+   python age_progression/data/aihub_parser.py --guide
+   python age_progression/data/aihub_parser.py --source-dir "C:/path/to/aihub" --type family
+   ```
+
+3. **FIW (Families in the Wild) 대규모 혈연 데이터**:
+   ```bash
+   python age_progression/data/fiw_parser.py --fiw-dir "C:/path/to/fiw"
+   ```
+
+### 4. 3단계 점진적 커리큘럼 학습 (Curriculum Learning)
+안정적이고 정밀한 노화 생성을 위해 3단계 커리큘럼 파이프라인을 지원합니다:
+- **Phase 1 (기초 공사)**: 일반 안면 기반 신원 보존($L_{ID}$) 및 안면 재구성($L_{Recon}$) 사전 학습
+- **Phase 2 (동양인/연령대 특화)**: 한국인/동양인 안면 및 연령대별 노화 곡선($L_{Age}$) 특화
+- **Phase 3 (골격 노화 & 혈연 융합)**: FG-NET 종단면 실제 데이터 및 가족 혈연 데이터($L_{Kinship}$) 통합 학습
+
 ```bash
-python age_progression/data/download_datasets.py --data-dir data_utkface
+# 전체 3단계 커리큘럼 학습 실행
+python age_progression/train_curriculum.py --phase all --epochs 1 --batch-size 4 --image-size 128
 ```
 
-### 4. 저화질 아동 사진 복원 및 선명화 (Face Enhancement)
+### 5. 저화질 아동 사진 복원 및 선명화 (Face Enhancement)
 ```bash
 python age_progression/data/face_enhancer.py --input blurry_child.jpg --output enhanced_child.png
 ```
 
-### 5. 대화형 웹 인터페이스 실행 (Web UI)
+### 6. 대화형 웹 인터페이스 실행 (Web UI)
 ```bash
 python age_progression/web_app.py
 ```
 브라우저에서 `http://127.0.0.1:8000` 접속 (웹에서 AI 안면 복원 토글 지원)
 
-### 6. 연령별 타임랩스 배너 생성 CLI
+### 7. 연령별 타임랩스 배너 생성 CLI
 ```bash
 python age_progression/visualize_samples.py \
   --child sample_data/family_001/child_age06.jpg \
@@ -96,9 +124,10 @@ python age_progression/visualize_samples.py \
   --output outputs/my_timelapse.png
 ```
 
-### 7. 소거 연구(Ablation Study) 벤치마크 평가
+### 8. 소거 연구(Ablation Study) 및 벤치마크 평가
 ```bash
-python age_progression/evaluate.py --num-samples 16
+# 실제 FG-NET 종단면 데이터 기반 정량 평가
+python age_progression/evaluate.py --checkpoint checkpoints/age_progression_curriculum.pt --manifest data_fgnet/manifest_fgnet.json --num-samples 16
 ```
 
 ---
@@ -114,19 +143,22 @@ python age_progression/evaluate.py --num-samples 16
 │   ├── demo.py                   # 모델 초기화, Forward, Multi-loss 통합 검증
 │   ├── evaluate.py               # 정량 평가 및 소거 연구(Ablation) 벤치마크
 │   ├── inference.py              # 나이 변환 엔드투엔드 추론 파이프라인 (복원 지원)
-│   ├── train.py                  # 모델 학습 루프 및 체크포인트 저장기
+│   ├── train.py                  # 표준 모델 학습 루프
+│   ├── train_curriculum.py       # 3단계 점진적 커리큘럼 학습 엔진
 │   ├── visualize_samples.py      # 연령대별 연속 변환 그리드 생성 스크립트
 │   ├── web_app.py                # FastAPI 웹 애플리케이션 및 REST API
 │   ├── static/                   # 웹 대시보드 프론트엔드 (HTML/CSS, 복원 토글)
 │   ├── data/
-│   │   ├── dataset.py            # Triplet 데이터셋 로더
-│   │   ├── download_datasets.py  # 실제 UTKFace/연령 데이터셋 다운로더 & 매핑기
+│   │   ├── dataset.py            # Triplet 데이터셋 로더 (커스텀 collator 내장)
+│   │   ├── download_fgnet.py     # FG-NET 종단면 실제 데이터 다운로더 & 페어 빌더
+│   │   ├── aihub_parser.py       # AI Hub 한국인 안면/가족 파서 & CLI 가이드
+│   │   ├── fiw_parser.py         # Families in the Wild 혈연 데이터셋 파서
 │   │   ├── face_enhancer.py      # 저화질/블러 아동 사진 복원 및 선명화기
-│   │   ├── prepare_dataset.py    # 데이터셋 파싱 및 매니페스트 빌더
+│   │   ├── download_datasets.py  # UTKFace 다운로더 & 매핑기
 │   │   └── transforms.py         # 얼굴 정렬 및 전처리 파이프라인
 │   ├── losses/                   # 4단계 복합 손실 함수 (Recon, ID, Age, Kinship)
 │   └── models/                   # ArcFace, Kinship Fusion, AdaIN Generator 모델
-├── checkpoints/                  # 학습 가중치 저장 디렉토리
+├── checkpoints/                  # 학습 가중치 저장 디렉토리 (Curriculum/Latest)
 ├── sample_data/                  # 검증용 합성 가족 Triplet 데이터
 └── outputs/                      # 생성된 타임랩스 및 분석 결과 이미지
 ```

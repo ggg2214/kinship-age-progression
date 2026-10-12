@@ -21,3 +21,11 @@ venv/
 env/
 .venv/
 
+# Raw dataset files and archives
+data_fgnet/
+data_utkface/
+data_fiw/
+data_aihub/
+*.zip
+*.tar.gz
+*.tar

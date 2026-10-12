@@ -30,6 +30,38 @@ class TotalAgeProgressionLoss(nn.Module):
         self.age_loss_fn = AgeEstimationLoss(age_estimator=age_estimator)
         self.kinship_loss_fn = KinshipLoss(embed_dim=self.config.id_embed_dim)
 
+    @property
+    def lambda_recon(self) -> float:
+        return self.config.lambda_recon
+
+    @lambda_recon.setter
+    def lambda_recon(self, val: float):
+        self.config.lambda_recon = val
+
+    @property
+    def lambda_id(self) -> float:
+        return self.config.lambda_id
+
+    @lambda_id.setter
+    def lambda_id(self, val: float):
+        self.config.lambda_id = val
+
+    @property
+    def lambda_age(self) -> float:
+        return self.config.lambda_age
+
+    @lambda_age.setter
+    def lambda_age(self, val: float):
+        self.config.lambda_age = val
+
+    @property
+    def lambda_kinship(self) -> float:
+        return self.config.lambda_kinship
+
+    @lambda_kinship.setter
+    def lambda_kinship(self, val: float):
+        self.config.lambda_kinship = val
+
     def set_id_encoder(self, id_encoder: nn.Module):
         """Sets the identity encoder if not provided at initialization."""
         self.id_loss_fn = IdentityLoss(id_encoder=id_encoder)

@@ -28,7 +28,8 @@ import numpy as np
 from age_progression.config import AgeProgressionConfig
 from age_progression.models.full_model import AgeProgressionModel
 from age_progression.losses.total_loss import TotalAgeProgressionLoss
-from age_progression.data.dataset import MockKinshipAgeDataset
+from age_progression.data.dataset import MockKinshipAgeDataset, KinshipAgeDataset, collate_kinship_batch
+import json
 
 
 def evaluate_batch(
@@ -41,8 +42,9 @@ def evaluate_batch(
     child_img = batch["child_img"]
     target_age = batch["target_age"]
     source_age = batch["source_age"]
-    father_img = batch["father_img"] if with_kinship else None
-    mother_img = batch["mother_img"] if with_kinship else None
+    father_img = batch.get("father_img") if with_kinship else None
+    mother_img = batch.get("mother_img") if with_kinship else None
+    gt_img = batch.get("ground_truth_img")
 
     with torch.no_grad():
         outputs = model(
@@ -56,7 +58,8 @@ def evaluate_batch(
         losses = loss_calculator(
             model_outputs=outputs,
             child_img=child_img,
-            target_age=target_age
+            target_age=target_age,
+            ground_truth_target_img=gt_img
         )
 
         pred_img = outputs["pred_img"]
@@ -71,9 +74,9 @@ def evaluate_batch(
 
         # 3. Kinship Resemblance (Cosine similarity to parents)
         kinship_sim = 0.0
-        if with_kinship and batch["father_img"] is not None and batch["mother_img"] is not None:
-            v_f = model.id_encoder(batch["father_img"])
-            v_m = model.id_encoder(batch["mother_img"])
+        if with_kinship and father_img is not None and mother_img is not None:
+            v_f = model.id_encoder(father_img)
+            v_m = model.id_encoder(mother_img)
             sim_f = torch.sum(v_pred * v_f, dim=-1).mean().item()
             sim_m = torch.sum(v_pred * v_m, dim=-1).mean().item()
             kinship_sim = (sim_f + sim_m) / 2.0
@@ -82,7 +85,6 @@ def evaluate_batch(
         attn_father = 0.5
         attn_mother = 0.5
         if with_kinship and outputs["attn_weights"] is not None:
-            # attn_weights shape: (B, 1, 2) where dim=-1 has [father, mother]
             avg_attn = outputs["attn_weights"].squeeze(1).mean(dim=0).cpu().numpy()
             attn_father = float(avg_attn[0])
             attn_mother = float(avg_attn[1])
@@ -98,7 +100,11 @@ def evaluate_batch(
     }
 
 
-def run_benchmark(num_samples: int = 16, checkpoint_path: Optional[str] = None):
+def run_benchmark(
+    num_samples: int = 16,
+    checkpoint_path: Optional[str] = None,
+    manifest_path: Optional[str] = None
+):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     config = AgeProgressionConfig(image_size=128, device=device)
 
@@ -114,9 +120,16 @@ def run_benchmark(num_samples: int = 16, checkpoint_path: Optional[str] = None):
 
     loss_calculator = TotalAgeProgressionLoss(config=config, id_encoder=model.id_encoder).to(device)
 
-    dataset = MockKinshipAgeDataset(num_samples=num_samples, image_size=config.image_size)
     from torch.utils.data import DataLoader
-    loader = DataLoader(dataset, batch_size=4, shuffle=False)
+    if manifest_path and os.path.exists(manifest_path):
+        print(f"[DATA] Loading real evaluation manifest: {manifest_path}...")
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            samples = json.load(f)[:num_samples]
+        dataset = KinshipAgeDataset(samples=samples, image_size=config.image_size, is_train=False)
+        loader = DataLoader(dataset, batch_size=4, shuffle=False, collate_fn=collate_kinship_batch)
+    else:
+        dataset = MockKinshipAgeDataset(num_samples=num_samples, image_size=config.image_size)
+        loader = DataLoader(dataset, batch_size=4, shuffle=False)
 
     results_kinship = []
     results_solo = []
@@ -165,7 +178,8 @@ def run_benchmark(num_samples: int = 16, checkpoint_path: Optional[str] = None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate Age Progression Model")
     parser.add_argument("--num-samples", type=int, default=16, help="Number of evaluation samples")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/age_progression_latest.pt", help="Checkpoint path")
+    parser.add_argument("--checkpoint", type=str, default="checkpoints/age_progression_curriculum.pt", help="Checkpoint path")
+    parser.add_argument("--manifest", type=str, default=None, help="Optional dataset manifest path")
     args = parser.parse_args()
 
-    run_benchmark(num_samples=args.num_samples, checkpoint_path=args.checkpoint)
+    run_benchmark(num_samples=args.num_samples, checkpoint_path=args.checkpoint, manifest_path=args.manifest)

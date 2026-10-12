@@ -172,3 +172,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     setup_dataset(target_dir=args.data_dir, manifest_path=args.manifest, sample_only=args.sample_only)
+
