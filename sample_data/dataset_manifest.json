@@ -1,0 +1,34 @@
+[
+  {
+    "family_id": "family_001",
+    "child_path": "sample_data\\family_001\\child_age06.jpg",
+    "father_path": "sample_data\\family_001\\father_age38.jpg",
+    "mother_path": "sample_data\\family_001\\mother_age35.jpg",
+    "source_age": 6.0,
+    "target_age": 30.0
+  },
+  {
+    "family_id": "family_002",
+    "child_path": "sample_data\\family_002\\child_age06.jpg",
+    "father_path": "sample_data\\family_002\\father_age38.jpg",
+    "mother_path": "sample_data\\family_002\\mother_age35.jpg",
+    "source_age": 6.0,
+    "target_age": 30.0
+  },
+  {
+    "family_id": "family_003",
+    "child_path": "sample_data\\family_003\\child_age06.jpg",
+    "father_path": "sample_data\\family_003\\father_age38.jpg",
+    "mother_path": "sample_data\\family_003\\mother_age35.jpg",
+    "source_age": 6.0,
+    "target_age": 30.0
+  },
+  {
+    "family_id": "family_004",
+    "child_path": "sample_data\\family_004\\child_age06.jpg",
+    "father_path": "sample_data\\family_004\\father_age38.jpg",
+    "mother_path": "sample_data\\family_004\\mother_age35.jpg",
+    "source_age": 6.0,
+    "target_age": 30.0
+  }
+]

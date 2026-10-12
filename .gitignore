@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyTorch large model checkpoints (> 100 MB GitHub limit)
+checkpoints/*.pt
+*.pth
+*.bin
+
+# IDE and OS files
+.vs/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Virtual environments
+venv/
+env/
+.venv/

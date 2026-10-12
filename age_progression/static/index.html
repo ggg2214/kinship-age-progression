@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>장기 실종아동 나이 변환(Age Progression) 시스템</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">Deep Learning Kinship Pipeline</div>
+      <h1>장기 실종아동 나이 변환(Age Progression) 시연 시스템</h1>
+      <p class="subtitle">친부모 유전 정보(Kinship Cross-Attention) 및 ArcFace 생체 정체성 보존 기반 나이 예측</p>
+    </header>
+
+    <!-- Uploads Grid -->
+    <div class="grid-3">
+      <!-- Child Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>실종 아동 사진</span>
+          <span class="tag-required">필수</span>
+        </div>
+        <div class="upload-box" id="childBox">
+          <div class="upload-prompt" id="childPrompt">
+            <svg width="40" height="40" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style="margin-bottom:8px">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+            </svg>
+            <p style="font-size:13px; color:#94a3b8;">클릭 또는 사진 드래그</p>
+          </div>
+          <img class="preview" id="childPreview" alt="Child Preview">
+          <input type="file" id="childInput" accept="image/*">
+        </div>
+      </div>
+
+      <!-- Father Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>친부 사진</span>
+          <span class="tag-optional">선택 (Kinship)</span>
+        </div>
+        <div class="upload-box" id="fatherBox">
+          <div class="upload-prompt" id="fatherPrompt">
+            <svg width="40" height="40" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style="margin-bottom:8px">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+            </svg>
+            <p style="font-size:13px; color:#94a3b8;">친부 사진 업로드</p>
+          </div>
+          <img class="preview" id="fatherPreview" alt="Father Preview">
+          <input type="file" id="fatherInput" accept="image/*">
+        </div>
+      </div>
+
+      <!-- Mother Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>친모 사진</span>
+          <span class="tag-optional">선택 (Kinship)</span>
+        </div>
+        <div class="upload-box" id="motherBox">
+          <div class="upload-prompt" id="motherPrompt">
+            <svg width="40" height="40" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" style="margin-bottom:8px">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+            </svg>
+            <p style="font-size:13px; color:#94a3b8;">친모 사진 업로드</p>
+          </div>
+          <img class="preview" id="motherPreview" alt="Mother Preview">
+          <input type="file" id="motherInput" accept="image/*">
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card controls-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:600; font-size:16px;">연령 조건 설정</span>
+        <button type="button" class="secondary" style="padding:6px 14px; font-size:13px;" id="btnLoadMock">샘플 사진 자동 채우기</button>
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>실종 당시 아동 나이 (Source Age)</span>
+          <span class="slider-value" id="sourceAgeVal">5세</span>
+        </div>
+        <input type="range" id="sourceAgeSlider" min="1" max="15" value="5">
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>예측 대상 목표 나이 (Target Age)</span>
+          <span class="slider-value" id="targetAgeVal">30세</span>
+        </div>
+        <input type="range" id="targetAgeSlider" min="10" max="75" value="30">
+      </div>
+
+      <div class="btn-row">
+        <button class="primary" id="btnPredict">나이 변환 실행 (Single Age Prediction)</button>
+        <button class="secondary" id="btnTimelapse">성장 타임랩스 생성 (10~60세)</button>
+      </div>
+      <div class="spinner" id="spinner"></div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="results-section card" id="resultsSection">
+      <div class="card-title">
+        <span>나이 변환 결과 분석</span>
+        <span class="badge" id="modeBadge">Kinship Guided Mode</span>
+      </div>
+
+      <div class="comparison-grid">
+        <div class="image-panel">
+          <img id="resChildImg" src="" alt="Original Child">
+          <div class="panel-label">실종 당시 아동 원본 (<span id="resSourceAge">5</span>세)</div>
+        </div>
+        <div class="image-panel">
+          <img id="resPredImg" src="" alt="Predicted Face">
+          <div class="panel-label">예측된 현재 얼굴 (<span id="resTargetAge">30</span>세)</div>
+        </div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="metrics-box">
+        <div class="metric-row">
+          <span style="color:var(--text-muted)">안면 정체성 보존도 (ArcFace Cosine Similarity)</span>
+          <span id="metricIdentity" style="font-weight:700; color:var(--accent-cyan);">-</span>
+        </div>
+        <div class="metric-row">
+          <span style="color:var(--text-muted)">부모 유전 임베딩 결합 크기 (Kinship Vector Norm)</span>
+          <span id="metricKinNorm" style="font-weight:700; color:var(--accent-green);">-</span>
+        </div>
+        <div class="metric-row" id="attnRow">
+          <div style="width:100%">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+              <span style="color:var(--text-muted)">유전적 특징 기여도 분배 (Cross-Attention)</span>
+              <span style="font-size:13px;">
+                <span style="color:#38bdf8">친부: <b id="pctFather">50%</b></span> | 
+                <span style="color:#f472b6">친모: <b id="pctMother">50%</b></span>
+              </span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-father" id="barFather" style="width: 50%"></div>
+              <div class="progress-mother" id="barMother" style="width: 50%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timelapse View -->
+      <div class="timelapse-container" id="timelapseContainer" style="display:none;">
+        <h3 style="margin-bottom:12px; font-size:16px; color:var(--accent-cyan);">성장 과정 연령별 타임랩스 파노라마</h3>
+        <img id="timelapseImg" src="" alt="Timelapse Grid">
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sourceSlider = document.getElementById('sourceAgeSlider');
+    const targetSlider = document.getElementById('targetAgeSlider');
+    const sourceVal = document.getElementById('sourceAgeVal');
+    const targetVal = document.getElementById('targetAgeVal');
+    const spinner = document.getElementById('spinner');
+    const resultsSection = document.getElementById('resultsSection');
+
+    sourceSlider.oninput = () => sourceVal.innerText = `${sourceSlider.value}세`;
+    targetSlider.oninput = () => targetVal.innerText = `${targetSlider.value}세`;
+
+    function setupPreview(inputId, previewId, promptId) {
+      const input = document.getElementById(inputId);
+      const preview = document.getElementById(previewId);
+      const prompt = document.getElementById(promptId);
+      input.onchange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            preview.src = ev.target.result;
+            preview.style.display = 'block';
+            prompt.style.display = 'none';
+          };
+          reader.readAsDataURL(e.target.files[0]);
+        }
+      };
+    }
+
+    setupPreview('childInput', 'childPreview', 'childPrompt');
+    setupPreview('fatherInput', 'fatherPreview', 'fatherPrompt');
+    setupPreview('motherInput', 'motherPreview', 'motherPrompt');
+
+    // Create a mock canvas image dataURL for quick testing
+    function createMockDataURL(label, color) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(80, 100, 18, 0, Math.PI * 2);
+      ctx.arc(176, 100, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#883333';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(128, 170, 36, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+      ctx.fillStyle = '#111';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText(label, 20, 40);
+      return canvas.toDataURL('image/jpeg');
+    }
+
+    function dataURLtoFile(dataurl, filename) {
+      const arr = dataurl.split(',');
+      const mime = arr[0].match(/:(.*?);/)[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new File([u8arr], filename, {type:mime});
+    }
+
+    let mockFiles = {};
+
+    document.getElementById('btnLoadMock').onclick = () => {
+      const cData = createMockDataURL('Child (5y)', '#fed7aa');
+      const fData = createMockDataURL('Father (38y)', '#cbd5e1');
+      const mData = createMockDataURL('Mother (35y)', '#fbcfe8');
+
+      document.getElementById('childPreview').src = cData;
+      document.getElementById('childPreview').style.display = 'block';
+      document.getElementById('childPrompt').style.display = 'none';
+
+      document.getElementById('fatherPreview').src = fData;
+      document.getElementById('fatherPreview').style.display = 'block';
+      document.getElementById('fatherPrompt').style.display = 'none';
+
+      document.getElementById('motherPreview').src = mData;
+      document.getElementById('motherPreview').style.display = 'block';
+      document.getElementById('motherPrompt').style.display = 'none';
+
+      mockFiles.child = dataURLtoFile(cData, 'mock_child.jpg');
+      mockFiles.father = dataURLtoFile(fData, 'mock_father.jpg');
+      mockFiles.mother = dataURLtoFile(mData, 'mock_mother.jpg');
+    };
+
+    function getFile(inputId, mockKey) {
+      const fileInput = document.getElementById(inputId);
+      if (fileInput.files && fileInput.files[0]) {
+        return fileInput.files[0];
+      }
+      return mockFiles[mockKey] || null;
+    }
+
+    document.getElementById('btnPredict').onclick = async () => {
+      const childFile = getFile('childInput', 'child');
+      if (!childFile) {
+        alert('실종 아동 사진을 업로드하거나 샘플 사진을 채워주세요.');
+        return;
+      }
+
+      const fatherFile = getFile('fatherInput', 'father');
+      const motherFile = getFile('motherInput', 'mother');
+
+      const formData = new FormData();
+      formData.append('child_file', childFile);
+      if (fatherFile) formData.append('father_file', fatherFile);
+      if (motherFile) formData.append('mother_file', motherFile);
+      formData.append('source_age', sourceSlider.value);
+      formData.append('target_age', targetSlider.value);
+
+      spinner.style.display = 'block';
+      resultsSection.classList.remove('active');
+      document.getElementById('timelapseContainer').style.display = 'none';
+
+      try {
+        const resp = await fetch('/api/predict', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await resp.json();
+        spinner.style.display = 'none';
+
+        if (resp.ok) {
+          resultsSection.classList.add('active');
+          document.getElementById('resChildImg').src = document.getElementById('childPreview').src;
+          document.getElementById('resPredImg').src = data.predicted_image;
+          document.getElementById('resSourceAge').innerText = data.source_age;
+          document.getElementById('resTargetAge').innerText = data.target_age;
+          document.getElementById('metricIdentity').innerText = `${(data.identity_similarity * 100).toFixed(1)}% (${data.identity_similarity})`;
+          document.getElementById('metricKinNorm').innerText = data.kinship_vector_norm;
+
+          const modeBadge = document.getElementById('modeBadge');
+          const attnRow = document.getElementById('attnRow');
+
+          if (data.has_kinship) {
+            modeBadge.innerText = 'Kinship Guided Mode';
+            modeBadge.style.color = '#38bdf8';
+            attnRow.style.display = 'block';
+            document.getElementById('pctFather').innerText = `${data.father_attention_pct}%`;
+            document.getElementById('pctMother').innerText = `${data.mother_attention_pct}%`;
+            document.getElementById('barFather').style.width = `${data.father_attention_pct}%`;
+            document.getElementById('barMother').style.width = `${data.mother_attention_pct}%`;
+          } else {
+            modeBadge.innerText = 'Self-Fallback Mode (Solo)';
+            modeBadge.style.color = '#94a3b8';
+            attnRow.style.display = 'none';
+          }
+        } else {
+          alert('예측 실패: ' + (data.detail || JSON.stringify(data)));
+        }
+      } catch (err) {
+        spinner.style.display = 'none';
+        alert('통신 오류: ' + err.message);
+      }
+    };
+
+    document.getElementById('btnTimelapse').onclick = async () => {
+      const childFile = getFile('childInput', 'child');
+      if (!childFile) {
+        alert('실종 아동 사진을 업로드하거나 샘플 사진을 채워주세요.');
+        return;
+      }
+
+      const fatherFile = getFile('fatherInput', 'father');
+      const motherFile = getFile('motherInput', 'mother');
+
+      const formData = new FormData();
+      formData.append('child_file', childFile);
+      if (fatherFile) formData.append('father_file', fatherFile);
+      if (motherFile) formData.append('mother_file', motherFile);
+      formData.append('source_age', sourceSlider.value);
+      formData.append('ages', '10,20,30,40,50,60');
+
+      spinner.style.display = 'block';
+
+      try {
+        const resp = await fetch('/api/timelapse', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await resp.json();
+        spinner.style.display = 'none';
+
+        if (resp.ok) {
+          resultsSection.classList.add('active');
+          const tCont = document.getElementById('timelapseContainer');
+          tCont.style.display = 'block';
+          document.getElementById('timelapseImg').src = data.banner_strip;
+          tCont.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          alert('타임랩스 생성 실패: ' + (data.detail || JSON.stringify(data)));
+        }
+      } catch (err) {
+        spinner.style.display = 'none';
+        alert('통신 오류: ' + err.message);
+      }
+    };
+  </script>
+</body>
+</html>
