@@ -137,7 +137,16 @@ npx netlify-cli deploy --prod --dir=public
 > - **🌐 Client Standalone Mode**: 백엔드 서버가 없어도 브라우저 내장 클라이언트 시뮬레이션 엔진을 통해 누구나 즉시 가상 가족 및 FG-NET 실제 정답 비교 시연을 체험할 수 있습니다.
 > - **⚡ PyTorch GPU Live Mode**: 로컬 PC 또는 Hugging Face Spaces / Render 등에서 `web_app.py`를 실행한 후, 웹 화면 상단의 API 설정창에 주소를 입력하면 실시간 딥러닝 추론으로 자동 연동됩니다.
 
-### 8. 연령별 타임랩스 배너 생성 CLI
+### 8. 24시간 무료 클라우드 AI 서버 배포 (Hugging Face Spaces)
+내 컴퓨터를 켜두지 않아도 24시간 언제 어디서나 AI 나이 변환 서버가 작동하도록 **Hugging Face Spaces (무료 16GB RAM + 2 vCPU 또는 GPU)** 배포 템플릿이 `hf_space/`에 준비되어 있습니다:
+
+1. [Hugging Face Spaces](https://huggingface.co/spaces) 접속 후 **Create new Space** 클릭
+2. Space name 입력 (예: `kinship-age-progression-api`), SDK는 **Docker** 선택
+3. 저장소의 `hf_space/` 폴더 안의 파일들(`Dockerfile`, `requirements.txt`, `app.py`, `README.md`)을 Hugging Face Space에 업로드하거나 Git Push
+4. 빌드가 완료되면 생성되는 공개 URL(예: `https://[사용자명]-kinship-age-progression-api.hf.space`)을 복사
+5. Netlify 웹사이트 상단 **🌐 Client Standalone Mode** 뱃지를 클릭하고 복사한 URL을 입력 후 [저장]하면, **내 컴퓨터를 꺼도 24시간 실시간 AI 서버 모드로 동작**합니다!
+
+### 9. 연령별 타임랩스 배너 생성 CLI
 ```bash
 python age_progression/visualize_samples.py \
   --child sample_data/family_001/child_age06.jpg \
