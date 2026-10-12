@@ -5,6 +5,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ggg2214/kinship-age-progression/blob/main/notebooks/train_colab.ipynb)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/ggg2214/kinship-age-progression)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -108,13 +109,35 @@ python age_progression/train_curriculum.py --phase all --epochs 1 --batch-size 4
 python age_progression/data/face_enhancer.py --input blurry_child.jpg --output enhanced_child.png
 ```
 
-### 6. 대화형 웹 인터페이스 실행 (Web UI)
+### 6. 대화형 웹 인터페이스 실행 (Local Web UI)
 ```bash
 python age_progression/web_app.py
 ```
 브라우저에서 `http://127.0.0.1:8000` 접속 (웹에서 AI 안면 복원 토글 지원)
 
-### 7. 연령별 타임랩스 배너 생성 CLI
+### 7. Netlify 온라인 무료 웹 배포 (Deploy to Netlify)
+본 프로젝트는 **Netlify**를 통해 누구나 온라인에서 직접 체험할 수 있도록 `public/` 정적 사이트 번들 및 `netlify.toml` 구성이 완료되어 있습니다.
+
+#### 방법 1: GitHub 연동 자동 배포 (가장 추천)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/ggg2214/kinship-age-progression)
+1. 상단 **Deploy to Netlify** 버튼을 클릭하거나, [Netlify 대시보드](https://app.netlify.com/)에 접속합니다.
+2. `Add new site` ➔ `Import an existing project` ➔ `GitHub` 선택 후 저장소(`ggg2214/kinship-age-progression`)를 선택합니다.
+3. 배포 설정:
+   - **Publish directory**: `public` (`netlify.toml`에 의해 자동 지정됨)
+   - **Build command**: (비워둠)
+4. `Deploy site` 클릭 시 수 초 내에 고유 URL(예: `https://kinship-age-progression.netlify.app`)로 전 세계에 배포됩니다.
+
+#### 방법 2: Netlify CLI 터미널 배포
+```bash
+npx netlify-cli deploy --prod --dir=public
+```
+
+> [!TIP]
+> **Netlify 호스팅 시 동작 방식**:
+> - **🌐 Client Standalone Mode**: 백엔드 서버가 없어도 브라우저 내장 클라이언트 시뮬레이션 엔진을 통해 누구나 즉시 가상 가족 및 FG-NET 실제 정답 비교 시연을 체험할 수 있습니다.
+> - **⚡ PyTorch GPU Live Mode**: 로컬 PC 또는 Hugging Face Spaces / Render 등에서 `web_app.py`를 실행한 후, 웹 화면 상단의 API 설정창에 주소를 입력하면 실시간 딥러닝 추론으로 자동 연동됩니다.
+
+### 8. 연령별 타임랩스 배너 생성 CLI
 ```bash
 python age_progression/visualize_samples.py \
   --child sample_data/family_001/child_age06.jpg \
@@ -124,7 +147,7 @@ python age_progression/visualize_samples.py \
   --output outputs/my_timelapse.png
 ```
 
-### 8. 소거 연구(Ablation Study) 및 벤치마크 평가
+### 9. 소거 연구(Ablation Study) 및 벤치마크 평가
 ```bash
 # 실제 FG-NET 종단면 데이터 기반 정량 평가
 python age_progression/evaluate.py --checkpoint checkpoints/age_progression_curriculum.pt --manifest data_fgnet/manifest_fgnet.json --num-samples 16

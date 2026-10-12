@@ -19,6 +19,7 @@ from typing import Optional, List
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import torch
 
@@ -32,10 +33,23 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Enable CORS for Netlify frontend and cross-origin access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Global pipeline instance
 pipeline: Optional[AgeProgressionPipeline] = None
 current_device = "cuda" if torch.cuda.is_available() else "cpu"
-checkpoint_file = "checkpoints/age_progression_latest.pt"
+checkpoint_file = (
+    "checkpoints/age_progression_curriculum.pt"
+    if os.path.exists("checkpoints/age_progression_curriculum.pt")
+    else "checkpoints/age_progression_latest.pt"
+)
 
 
 def get_pipeline() -> AgeProgressionPipeline:
@@ -201,19 +215,41 @@ async def generate_timelapse(
     })
 
 
-# Static assets
+# Static assets - prioritize public/ (Netlify deploy directory), fall back to age_progression/static/
+public_dir = os.path.join(_project_root, "public")
 static_dir = os.path.join(os.path.dirname(__file__), "static")
-os.makedirs(static_dir, exist_ok=True)
+serve_dir = public_dir if os.path.exists(public_dir) else static_dir
+
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+if os.path.exists(os.path.join(public_dir, "assets")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(public_dir, "assets")), name="assets")
 
 
 @app.get("/", response_class=HTMLResponse)
 def index_page():
-    index_file = os.path.join(static_dir, "index.html")
+    index_file = os.path.join(serve_dir, "index.html")
     if os.path.exists(index_file):
         with open(index_file, "r", encoding="utf-8") as f:
             return f.read()
-    return "<h1>Kinship-Guided Age Progression Web UI</h1><p>static/index.html not found.</p>"
+    return "<h1>Kinship-Guided Age Progression Web UI</h1><p>index.html not found.</p>"
+
+
+@app.get("/style.css")
+def get_style_css():
+    css_file = os.path.join(serve_dir, "style.css")
+    if os.path.exists(css_file):
+        with open(css_file, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), media_type="text/css")
+    raise HTTPException(status_code=404, detail="style.css not found")
+
+
+@app.get("/app.js")
+def get_app_js():
+    js_file = os.path.join(serve_dir, "app.js")
+    if os.path.exists(js_file):
+        with open(js_file, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="app.js not found")
 
 
 if __name__ == "__main__":

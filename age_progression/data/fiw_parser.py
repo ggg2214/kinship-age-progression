@@ -101,3 +101,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     parse_fiw_families(args.fiw_dir, args.manifest)
+

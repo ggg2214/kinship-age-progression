@@ -148,3 +148,4 @@ if __name__ == "__main__":
         parse_aihub_family(args.source_dir, args.output_manifest)
     elif args.type == "kface":
         parse_aihub_kface(args.source_dir, args.output_manifest)
+
