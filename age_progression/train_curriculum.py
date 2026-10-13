@@ -140,7 +140,9 @@ def train_curriculum(
     batch_size: int = 2,
     device: str = "cpu",
     output_checkpoint: str = "checkpoints/age_progression_curriculum.pt",
-    max_samples: Optional[int] = None
+    max_samples: Optional[int] = None,
+    manifest_phase4: Optional[str] = None,
+    **kwargs
 ):
     os.makedirs(os.path.dirname(output_checkpoint) or ".", exist_ok=True)
     config = AgeProgressionConfig(image_size=image_size, device=device)
@@ -187,6 +189,7 @@ def train_curriculum(
         )
 
     # -------------------------------------------------------------
+    # -------------------------------------------------------------
     # Phase 3: Kinship & Longitudinal Fusion (노화 패턴 및 혈연 주입)
     # Focus on Longitudinal ground truth (FG-NET) & Kinship guidance
     # -------------------------------------------------------------
@@ -204,6 +207,25 @@ def train_curriculum(
             loss_weights={"recon": 1.0, "id": 2.0, "age": 1.5, "kinship": 1.5}
         )
 
+    # -------------------------------------------------------------
+    # Phase 4: Hairstyle & Detail Tuning (헤어 질감 및 세부 텍스처 미세조정)
+    # Strong Identity Weight (id=3.0) to prevent style entanglement!
+    # -------------------------------------------------------------
+    if 4 in phases:
+        manifest_phase4 = kwargs.get("manifest_phase4", None)
+        ds4 = load_dataset_or_mock(manifest_phase4, image_size=image_size, num_mock=16, max_samples=max_samples)
+        run_phase_training(
+            phase_num=4,
+            phase_name="Hairstyle & Detail Tuning (AI Hub Hairstyle & Landmark)",
+            model=model,
+            loss_fn=loss_fn,
+            dataset=ds4,
+            epochs=epochs_per_phase,
+            batch_size=batch_size,
+            device=device,
+            loss_weights={"recon": 1.5, "id": 3.0, "age": 1.0, "kinship": 1.0}
+        )
+
     torch.save(model.state_dict(), output_checkpoint)
     print(f"\n[OK] Curriculum learning complete! Model checkpoint saved to: {output_checkpoint}", flush=True)
     return output_checkpoint
@@ -211,7 +233,7 @@ def train_curriculum(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Curriculum Learning for Age Progression")
-    parser.add_argument("--phase", type=str, default="all", choices=["1", "2", "3", "all"], help="Which phase to train")
+    parser.add_argument("--phase", type=str, default="all", choices=["1", "2", "3", "4", "all"], help="Which phase to train")
     parser.add_argument("--epochs", type=int, default=1, help="Epochs per curriculum phase")
     parser.add_argument("--batch-size", type=int, default=2, help="Batch size")
     parser.add_argument("--image-size", type=int, default=128, help="Image resolution")
@@ -219,10 +241,11 @@ if __name__ == "__main__":
     parser.add_argument("--max-samples", type=int, default=None, help="Optional max samples to slice from dataset")
     parser.add_argument("--manifest-phase2", type=str, default="data_utkface/manifest.json", help="Manifest for Phase 2")
     parser.add_argument("--manifest-phase3", type=str, default="data_fgnet/manifest_fgnet.json", help="Manifest for Phase 3")
+    parser.add_argument("--manifest-phase4", type=str, default=None, help="Manifest for Phase 4")
     parser.add_argument("--output", type=str, default="checkpoints/age_progression_curriculum.pt", help="Checkpoint path")
     args = parser.parse_args()
 
-    phase_list = [1, 2, 3] if args.phase == "all" else [int(args.phase)]
+    phase_list = [1, 2, 3, 4] if args.phase == "all" else [int(args.phase)]
     train_curriculum(
         phases=phase_list,
         manifest_phase2=args.manifest_phase2,
@@ -232,5 +255,6 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         device=args.device,
         output_checkpoint=args.output,
-        max_samples=args.max_samples
+        max_samples=args.max_samples,
+        manifest_phase4=args.manifest_phase4
     )
