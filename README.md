@@ -80,12 +80,18 @@ pip install fastapi uvicorn python-multipart Pillow
    python age_progression/data/download_fgnet.py
    ```
 
-2. **AI Hub (aihub.or.kr) 한국인 안면 및 가족 데이터셋**:
-   - 한국인 가족 안면 데이터(Kinship Guided), 한국인 연령대별 안면 데이터, K-Face 지원
-   - `aihubshell` 다운로드 안내 및 자동 Triplet 파싱:
+2. **AI Hub (aihub.or.kr) 4대 한국인 특화 데이터셋 자동 파이프라인**:
+   - 가족 관계 안면 데이터, 연령대별 안면(에이징) 데이터, 안면 랜드마크, 한국인 헤어스타일 통합 지원
+   - `aihubshell` API Key 연동 자동 다운로드, 256x256 얼굴 자동 정렬 및 Triplet 매핑:
    ```bash
-   python age_progression/data/aihub_parser.py --guide
-   python age_progression/data/aihub_parser.py --source-dir "C:/path/to/aihub" --type family
+   # 다운로드 (API Key 기반)
+   python age_progression/data/aihub_pipeline.py --action download --datasetkey 562 --raw-dir data_aihub_raw
+   # 256x256 얼굴 자동 정렬 및 매니페스트 생성
+   python age_progression/data/aihub_pipeline.py --action preprocess --raw-dir data_aihub_raw --aligned-dir data_aihub_aligned
+   # 경량 단일 아카이브 패키징
+   python age_progression/data/aihub_pipeline.py --action package --aligned-dir data_aihub_aligned --archive korean_faces_256.tar.gz
+   # 대용량 원본 파일 안전 정리
+   python age_progression/data/aihub_pipeline.py --action cleanup --raw-dir data_aihub_raw
    ```
 
 3. **FIW (Families in the Wild) 대규모 혈연 데이터**:

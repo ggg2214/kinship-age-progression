@@ -26,6 +26,12 @@ data_fgnet/
 data_utkface/
 data_fiw/
 data_aihub/
+data_aihub_raw/
+data_aihub_aligned/
 *.zip
 *.tar.gz
 *.tar
+
+# Secrets & Infisical config
+.infisical.json
+.env
