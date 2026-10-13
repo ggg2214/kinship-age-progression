@@ -262,24 +262,29 @@ if __name__ == "__main__":
     parser.add_argument("--image-size", type=int, default=128, help="Image resolution")
     parser.add_argument("--device", type=str, default="cpu", help="Device (cpu or cuda)")
     parser.add_argument("--max-samples", type=int, default=None, help="Optional max samples to slice from dataset")
+    parser.add_argument("--manifest", type=str, default=None, help="Unified manifest path for all phases")
     parser.add_argument("--manifest-phase2", type=str, default="data_utkface/manifest.json", help="Manifest for Phase 2")
     parser.add_argument("--manifest-phase3", type=str, default="data_fgnet/manifest_fgnet.json", help="Manifest for Phase 3")
     parser.add_argument("--manifest-phase4", type=str, default=None, help="Manifest for Phase 4")
     parser.add_argument("--resume-checkpoint", type=str, default=None, help="Resume training from an existing checkpoint")
-    parser.add_argument("--output", type=str, default="checkpoints/age_progression_curriculum.pt", help="Checkpoint path")
+    parser.add_argument("--output", "--save-path", dest="output", type=str, default="checkpoints/age_progression_curriculum.pt", help="Checkpoint output path")
     args = parser.parse_args()
+
+    m_p2 = args.manifest if args.manifest else args.manifest_phase2
+    m_p3 = args.manifest if args.manifest else args.manifest_phase3
+    m_p4 = args.manifest if args.manifest else args.manifest_phase4
 
     phase_list = [1, 2, 3, 4] if args.phase == "all" else [int(args.phase)]
     train_curriculum(
         phases=phase_list,
-        manifest_phase2=args.manifest_phase2,
-        manifest_phase3=args.manifest_phase3,
+        manifest_phase2=m_p2,
+        manifest_phase3=m_p3,
         image_size=args.image_size,
         epochs_per_phase=args.epochs,
         batch_size=args.batch_size,
         device=args.device,
         output_checkpoint=args.output,
         max_samples=args.max_samples,
-        manifest_phase4=args.manifest_phase4,
+        manifest_phase4=m_p4,
         resume_checkpoint=args.resume_checkpoint
     )
