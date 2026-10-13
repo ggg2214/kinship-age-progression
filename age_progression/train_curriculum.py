@@ -152,6 +152,18 @@ def train_curriculum(
     model = AgeProgressionModel(config).to(device_obj)
     loss_fn = TotalAgeProgressionLoss(config=config, id_encoder=model.id_encoder).to(device_obj)
 
+    base_ckpt_no_ext, ext = os.path.splitext(output_checkpoint)
+    if not ext:
+        ext = ".pt"
+
+    # Optional Resume
+    resume_checkpoint = kwargs.get("resume_checkpoint", None)
+    if resume_checkpoint and os.path.exists(resume_checkpoint):
+        print(f"[INFO] Resuming model weights from previous checkpoint: {resume_checkpoint}...", flush=True)
+        state = torch.load(resume_checkpoint, map_location=device_obj)
+        model.load_state_dict(state)
+        print("[OK] Resumed weights loaded successfully!", flush=True)
+
     # -------------------------------------------------------------
     # Phase 1: Foundation (기초 공사)
     # Focus on Image Reconstruction and Identity Preservation
@@ -169,6 +181,9 @@ def train_curriculum(
             device=device,
             loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0}
         )
+        ckpt_p1 = f"{base_ckpt_no_ext}_phase1_foundation{ext}"
+        torch.save(model.state_dict(), ckpt_p1)
+        print(f"[CHECKPOINT] Phase 1 intermediate weights saved -> {ckpt_p1}", flush=True)
 
     # -------------------------------------------------------------
     # Phase 2: Asian & Age Specialization (동양인 및 연령대 최적화)
@@ -187,8 +202,10 @@ def train_curriculum(
             device=device,
             loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5}
         )
+        ckpt_p2 = f"{base_ckpt_no_ext}_phase2_aging{ext}"
+        torch.save(model.state_dict(), ckpt_p2)
+        print(f"[CHECKPOINT] Phase 2 intermediate weights saved -> {ckpt_p2}", flush=True)
 
-    # -------------------------------------------------------------
     # -------------------------------------------------------------
     # Phase 3: Kinship & Longitudinal Fusion (노화 패턴 및 혈연 주입)
     # Focus on Longitudinal ground truth (FG-NET) & Kinship guidance
@@ -206,6 +223,9 @@ def train_curriculum(
             device=device,
             loss_weights={"recon": 1.0, "id": 2.0, "age": 1.5, "kinship": 1.5}
         )
+        ckpt_p3 = f"{base_ckpt_no_ext}_phase3_kinship{ext}"
+        torch.save(model.state_dict(), ckpt_p3)
+        print(f"[CHECKPOINT] Phase 3 intermediate weights saved -> {ckpt_p3}", flush=True)
 
     # -------------------------------------------------------------
     # Phase 4: Hairstyle & Detail Tuning (헤어 질감 및 세부 텍스처 미세조정)
@@ -225,9 +245,12 @@ def train_curriculum(
             device=device,
             loss_weights={"recon": 1.5, "id": 3.0, "age": 1.0, "kinship": 1.0}
         )
+        ckpt_p4 = f"{base_ckpt_no_ext}_phase4_hairstyle{ext}"
+        torch.save(model.state_dict(), ckpt_p4)
+        print(f"[CHECKPOINT] Phase 4 intermediate weights saved -> {ckpt_p4}", flush=True)
 
     torch.save(model.state_dict(), output_checkpoint)
-    print(f"\n[OK] Curriculum learning complete! Model checkpoint saved to: {output_checkpoint}", flush=True)
+    print(f"\n[OK] Curriculum learning complete! Final model checkpoint saved to: {output_checkpoint}", flush=True)
     return output_checkpoint
 
 
@@ -242,6 +265,7 @@ if __name__ == "__main__":
     parser.add_argument("--manifest-phase2", type=str, default="data_utkface/manifest.json", help="Manifest for Phase 2")
     parser.add_argument("--manifest-phase3", type=str, default="data_fgnet/manifest_fgnet.json", help="Manifest for Phase 3")
     parser.add_argument("--manifest-phase4", type=str, default=None, help="Manifest for Phase 4")
+    parser.add_argument("--resume-checkpoint", type=str, default=None, help="Resume training from an existing checkpoint")
     parser.add_argument("--output", type=str, default="checkpoints/age_progression_curriculum.pt", help="Checkpoint path")
     args = parser.parse_args()
 
@@ -256,5 +280,6 @@ if __name__ == "__main__":
         device=args.device,
         output_checkpoint=args.output,
         max_samples=args.max_samples,
-        manifest_phase4=args.manifest_phase4
+        manifest_phase4=args.manifest_phase4,
+        resume_checkpoint=args.resume_checkpoint
     )
