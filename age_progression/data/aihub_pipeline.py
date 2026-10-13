@@ -58,7 +58,7 @@ def download_aihub_dataset(
     output_dir: str,
     filekey: Optional[str] = None
 ) -> bool:
-    """Downloads an AI Hub dataset using aihubshell into output_dir."""
+    """Downloads an AI Hub dataset using aihubshell into output_dir and verifies files."""
     shell_bin = ensure_aihubshell()
     os.makedirs(output_dir, exist_ok=True)
 
@@ -66,17 +66,44 @@ def download_aihub_dataset(
     if filekey:
         cmd.extend(["-filekey", str(filekey)])
 
-    print(f"[INFO] Executing aihubshell download for dataset {datasetkey} into {output_dir}...")
+    print(f"\n[INFO] AI Hub 공식 다운로더 가동 중 (Dataset Key: {datasetkey})...")
+    print(f"[INFO] 저장 대상 폴더: {output_dir}")
     try:
         proc = subprocess.run(cmd, cwd=output_dir, capture_output=True, text=True)
-        if proc.returncode == 0:
-            print(f"[OK] Download completed for dataset {datasetkey}.")
-            return True
-        else:
-            print(f"[ERROR] aihubshell download failed: {proc.stderr or proc.stdout}")
+        stdout_txt = proc.stdout or ""
+        stderr_txt = proc.stderr or ""
+        combined_output = stdout_txt + "\n" + stderr_txt
+
+        print(stdout_txt)
+        if stderr_txt:
+            print(f"[STDERR]: {stderr_txt}")
+
+        # Check for typical AI Hub approval / permission errors
+        if "승인 후 이용" in combined_output or "HTTP status 502" in combined_output:
+            print("\n" + "=" * 70)
+            print("🚨 [알림] AI Hub 다운로드 승인 필요")
+            print("AI Hub 서버 응답: 다운로드 서비스는 홈페이지(https://aihub.or.kr)에서 신청 및 승인 후 이용 가능합니다.")
+            print("조치 방법: AI Hub 로그인 ➔ 해당 데이터셋 상세 페이지 ➔ [활용 신청] 버튼 클릭 후 승인 상태를 확인해 주세요.")
+            print("=" * 70 + "\n")
             return False
+
+        # Verify whether actual files exist
+        downloaded_files = []
+        for r, _, files in os.walk(output_dir):
+            for f in files:
+                downloaded_files.append(os.path.join(r, f))
+
+        total_bytes = sum(os.path.getsize(f) for f in downloaded_files if os.path.exists(f))
+        total_mb = total_bytes / (1024 * 1024)
+
+        if len(downloaded_files) == 0 or total_mb < 1.0:
+            print(f"[WARN] 다운로드된 유효 데이터가 없습니다 (현재 용량: {total_mb:.2f} MB, 파일 수: {len(downloaded_files)}개).")
+            return False
+
+        print(f"[OK] 데이터셋 {datasetkey} 다운로드 성공! (총 파일 수: {len(downloaded_files)}개, 총 용량: {total_mb:.2f} MB)")
+        return True
     except Exception as e:
-        print(f"[ERROR] Subprocess error running aihubshell: {e}")
+        print(f"[ERROR] aihubshell 실행 중 예외 발생: {e}")
         return False
 
 
@@ -271,3 +298,4 @@ if __name__ == "__main__":
         package_to_archive(args.aligned_dir, args.archive)
     elif args.action == "cleanup":
         cleanup_raw_files(args.raw_dir)
+
