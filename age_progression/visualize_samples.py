@@ -152,9 +152,16 @@ def main():
         source_age=args.source_age
     )
 
-    grid.save(args.output)
-    print(f"[OK] Timeline image saved successfully to: {args.output} (Size: {grid.size})")
+    try:
+        grid.save(args.output)
+        print(f"[OK] Timeline image saved successfully to: {args.output} (Size: {grid.size})")
+    except Exception as e:
+        local_fallback = os.path.join("outputs", os.path.basename(args.output))
+        os.makedirs("outputs", exist_ok=True)
+        grid.save(local_fallback)
+        print(f"[WARN] Failed to save to {args.output} ({e}). Saved locally to: {local_fallback} (Size: {grid.size})")
 
 
 if __name__ == "__main__":
     main()
+
