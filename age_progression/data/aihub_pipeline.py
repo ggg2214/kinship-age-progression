@@ -289,8 +289,18 @@ def safe_extract_zip(zip_path: str, target_dir: str):
     """
     # 1. On Linux (Google Colab), try fast native unzip command first
     if os.name != "nt":
+        # Try unzip with -O cp949
         try:
             cmd = ["unzip", "-q", "-o", "-O", "cp949", zip_path, "-d", target_dir]
+            ret = subprocess.run(cmd, capture_output=True, text=True)
+            if ret.returncode == 0:
+                return
+        except Exception:
+            pass
+
+        # Try standard unzip
+        try:
+            cmd = ["unzip", "-q", "-o", zip_path, "-d", target_dir]
             ret = subprocess.run(cmd, capture_output=True, text=True)
             if ret.returncode == 0:
                 return
