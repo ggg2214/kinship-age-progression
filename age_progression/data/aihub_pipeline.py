@@ -19,6 +19,7 @@ import sys
 import json
 import shutil
 import tarfile
+import zipfile
 import argparse
 import subprocess
 from typing import List, Dict, Any, Optional, Tuple
@@ -175,8 +176,11 @@ def preprocess_aihub_datasets(
 
     img_paths = [f for f in all_files if f.lower().endswith((".jpg", ".jpeg", ".png"))]
     json_paths = {os.path.splitext(f)[0]: f for f in all_files if f.lower().endswith(".json")}
+    zip_paths = [f for f in all_files if f.lower().endswith((".zip", ".tar", ".tar.gz", ".tgz"))]
 
-    print(f"[INFO] Discovered {len(img_paths)} images and {len(json_paths)} JSON annotations.")
+    print(f"[INFO] Discovered {len(img_paths)} images, {len(json_paths)} JSON annotations, and {len(zip_paths)} archive files.")
+    if len(img_paths) == 0 and len(zip_paths) > 0:
+        print(f"[TIP] 발견된 압축 파일이 {len(zip_paths)}개 있습니다. '--action extract'를 실행하여 고속 압축 해제를 먼저 진행해 주세요.")
 
     # Group by directory / family
     groups: Dict[str, Dict[str, str]] = {}
@@ -276,12 +280,72 @@ def cleanup_raw_files(raw_dir: str):
         print(f"[OK] Cleaned up {raw_dir} successfully. Storage freed!")
 
 
+def safe_extract_zip(zip_path: str, target_dir: str):
+    """
+    Safely extracts zip archive handling Korean filename encoding (CP949/EUC-KR fallback).
+    Prevents garbled filenames for AI Hub datasets.
+    """
+    with zipfile.ZipFile(zip_path, "r") as z:
+        for member in z.infolist():
+            filename = member.filename
+            # AI Hub Korean filename encoding fix (CP437 misinterpreted to CP949 or UTF-8)
+            if not (member.flag_bits & 0x800):
+                try:
+                    filename = filename.encode("cp437").decode("cp949")
+                except Exception:
+                    try:
+                        filename = filename.encode("cp437").decode("utf-8")
+                    except Exception:
+                        pass
+
+            target_path = os.path.join(target_dir, filename)
+            if member.is_dir():
+                os.makedirs(target_path, exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                with z.open(member) as source, open(target_path, "wb") as target:
+                    shutil.copyfileobj(source, target)
+
+
+def extract_archives(raw_root_dir: str, target_dir: str) -> List[str]:
+    """
+    Extracts all .zip, .tar, .tar.gz files from raw_root_dir into target_dir.
+    Useful for unpacking Google Drive AI Hub archives into Colab's high-speed local disk.
+    """
+    os.makedirs(target_dir, exist_ok=True)
+    archive_files = []
+    for root, _, files in os.walk(raw_root_dir):
+        for f in files:
+            ext = f.lower()
+            if ext.endswith((".zip", ".tar", ".tar.gz", ".tgz")):
+                archive_files.append(os.path.join(root, f))
+
+    print(f"[INFO] Found {len(archive_files)} archive file(s) in {raw_root_dir}...")
+    extracted_paths = []
+    for archive_path in archive_files:
+        print(f"[INFO] Extracting: {os.path.basename(archive_path)} -> {target_dir}...")
+        try:
+            if archive_path.lower().endswith(".zip"):
+                safe_extract_zip(archive_path, target_dir)
+            elif archive_path.lower().endswith((".tar", ".tar.gz", ".tgz")):
+                with tarfile.open(archive_path, "r:*") as tar_ref:
+                    tar_ref.extractall(target_dir)
+            extracted_paths.append(archive_path)
+            print(f"[OK] Extracted {os.path.basename(archive_path)}")
+        except Exception as e:
+            print(f"[WARN] Failed to extract {archive_path}: {e}")
+
+    return extracted_paths
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AI Hub Integrated Pipeline & Google Drive Manager")
-    parser.add_argument("--action", choices=["download", "preprocess", "package", "cleanup"], required=True)
+    parser.add_argument("--action", choices=["download", "preprocess", "package", "cleanup", "extract"], required=True)
     parser.add_argument("--apikey", type=str, default=os.getenv("AI_HUB_API_KEY", ""))
     parser.add_argument("--datasetkey", type=str, default="")
     parser.add_argument("--raw-dir", type=str, default="data_aihub_raw")
+    parser.add_argument("--target-dir", type=str, default="/content/raw_unpacked")
     parser.add_argument("--aligned-dir", type=str, default="data_aihub_aligned")
     parser.add_argument("--manifest", type=str, default="data_aihub_aligned/manifest_aihub.json")
     parser.add_argument("--archive", type=str, default="data_aihub_aligned.tar.gz")
@@ -292,10 +356,13 @@ if __name__ == "__main__":
             print("[ERROR] Please provide --apikey and --datasetkey for download action.")
             sys.exit(1)
         download_aihub_dataset(args.apikey, args.datasetkey, args.raw_dir)
+    elif args.action == "extract":
+        extract_archives(args.raw_dir, args.target_dir)
     elif args.action == "preprocess":
         preprocess_aihub_datasets(args.raw_dir, args.aligned_dir, args.manifest)
     elif args.action == "package":
         package_to_archive(args.aligned_dir, args.archive)
     elif args.action == "cleanup":
         cleanup_raw_files(args.raw_dir)
+
 
