@@ -10,6 +10,9 @@ import os
 import sys
 import json
 import time
+import shutil
+import tempfile
+import uuid
 import argparse
 from typing import Optional, List, Dict, Any
 import torch
@@ -29,6 +32,33 @@ from age_progression.config import AgeProgressionConfig
 from age_progression.models.full_model import AgeProgressionModel
 from age_progression.losses.total_loss import TotalAgeProgressionLoss
 from age_progression.data.dataset import KinshipAgeDataset, MockKinshipAgeDataset, collate_kinship_batch
+
+
+def safe_torch_save(obj: Any, save_path: str):
+    """
+    Safely saves torch objects to handle Google Drive FUSE filesystem limitations.
+    Direct torch.save to /content/drive causes 'basic_ios::clear: iostream error' / 'unexpected pos 128 vs 0'
+    because FUSE lacks random seek / inline zip container write support.
+    We save to a local temp file first, then atomically copy to save_path.
+    """
+    target_dir = os.path.dirname(os.path.abspath(save_path))
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
+
+    # Save to local temporary file first to guarantee full seekable write
+    temp_dir = tempfile.gettempdir()
+    temp_name = f"ckpt_{uuid.uuid4().hex[:8]}_{os.path.basename(save_path)}"
+    temp_path = os.path.join(temp_dir, temp_name)
+    try:
+        torch.save(obj, temp_path)
+        shutil.copy2(temp_path, save_path)
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
 
 
 def load_dataset_or_mock(manifest_path: Optional[str], image_size: int = 128, num_mock: int = 16, max_samples: Optional[int] = None) -> torch.utils.data.Dataset:
@@ -182,7 +212,7 @@ def train_curriculum(
             loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0}
         )
         ckpt_p1 = f"{base_ckpt_no_ext}_phase1_foundation{ext}"
-        torch.save(model.state_dict(), ckpt_p1)
+        safe_torch_save(model.state_dict(), ckpt_p1)
         print(f"[CHECKPOINT] Phase 1 intermediate weights saved -> {ckpt_p1}", flush=True)
 
     # -------------------------------------------------------------
@@ -203,7 +233,7 @@ def train_curriculum(
             loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5}
         )
         ckpt_p2 = f"{base_ckpt_no_ext}_phase2_aging{ext}"
-        torch.save(model.state_dict(), ckpt_p2)
+        safe_torch_save(model.state_dict(), ckpt_p2)
         print(f"[CHECKPOINT] Phase 2 intermediate weights saved -> {ckpt_p2}", flush=True)
 
     # -------------------------------------------------------------
@@ -224,7 +254,7 @@ def train_curriculum(
             loss_weights={"recon": 1.0, "id": 2.0, "age": 1.5, "kinship": 1.5}
         )
         ckpt_p3 = f"{base_ckpt_no_ext}_phase3_kinship{ext}"
-        torch.save(model.state_dict(), ckpt_p3)
+        safe_torch_save(model.state_dict(), ckpt_p3)
         print(f"[CHECKPOINT] Phase 3 intermediate weights saved -> {ckpt_p3}", flush=True)
 
     # -------------------------------------------------------------
@@ -246,10 +276,10 @@ def train_curriculum(
             loss_weights={"recon": 1.5, "id": 3.0, "age": 1.0, "kinship": 1.0}
         )
         ckpt_p4 = f"{base_ckpt_no_ext}_phase4_hairstyle{ext}"
-        torch.save(model.state_dict(), ckpt_p4)
+        safe_torch_save(model.state_dict(), ckpt_p4)
         print(f"[CHECKPOINT] Phase 4 intermediate weights saved -> {ckpt_p4}", flush=True)
 
-    torch.save(model.state_dict(), output_checkpoint)
+    safe_torch_save(model.state_dict(), output_checkpoint)
     print(f"\n[OK] Curriculum learning complete! Final model checkpoint saved to: {output_checkpoint}", flush=True)
     return output_checkpoint
 

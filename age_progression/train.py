@@ -13,7 +13,10 @@ if hasattr(sys.stdout, "reconfigure"):
 
 import argparse
 import time
-from typing import Optional
+import shutil
+import tempfile
+import uuid
+from typing import Optional, Any
 import torch
 from torch.utils.data import DataLoader
 
@@ -22,6 +25,26 @@ from age_progression.config import AgeProgressionConfig
 from age_progression.models.full_model import AgeProgressionModel
 from age_progression.losses.total_loss import TotalAgeProgressionLoss
 from age_progression.data.dataset import KinshipAgeDataset, MockKinshipAgeDataset
+
+
+def safe_torch_save(obj: Any, save_path: str):
+    """Safely saves torch object handling Google Drive FUSE filesystem limitations."""
+    target_dir = os.path.dirname(os.path.abspath(save_path))
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
+    temp_dir = tempfile.gettempdir()
+    temp_name = f"ckpt_{uuid.uuid4().hex[:8]}_{os.path.basename(save_path)}"
+    temp_path = os.path.join(temp_dir, temp_name)
+    try:
+        torch.save(obj, temp_path)
+        shutil.copy2(temp_path, save_path)
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
 
 
 def train_age_progression(
@@ -108,7 +131,7 @@ def train_age_progression(
         )
 
     ckpt_path = os.path.join(checkpoint_dir, "age_progression_latest.pt")
-    torch.save(model.state_dict(), ckpt_path)
+    safe_torch_save(model.state_dict(), ckpt_path)
     print(f"[INFO] Checkpoint saved to: {ckpt_path}", flush=True)
     return ckpt_path
 
