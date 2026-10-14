@@ -282,9 +282,22 @@ def cleanup_raw_files(raw_dir: str):
 
 def safe_extract_zip(zip_path: str, target_dir: str):
     """
-    Safely extracts zip archive handling Korean filename encoding (CP949/EUC-KR fallback).
-    Prevents garbled filenames for AI Hub datasets.
+    Safely extracts zip archive handling:
+    1. Windows backslash ('\\') to Unix slash ('/') normalization (prevents [Errno 36] File name too long)
+    2. Korean filename encoding (CP949/EUC-KR fallback)
+    3. Fast system 'unzip' execution on Linux with fallback to python zipfile
     """
+    # 1. On Linux (Google Colab), try fast native unzip command first
+    if os.name != "nt":
+        try:
+            cmd = ["unzip", "-q", "-o", "-O", "cp949", zip_path, "-d", target_dir]
+            ret = subprocess.run(cmd, capture_output=True, text=True)
+            if ret.returncode == 0:
+                return
+        except Exception:
+            pass
+
+    # 2. Python zipfile fallback with path normalization and encoding fix
     with zipfile.ZipFile(zip_path, "r") as z:
         for member in z.infolist():
             filename = member.filename
@@ -298,8 +311,13 @@ def safe_extract_zip(zip_path: str, target_dir: str):
                     except Exception:
                         pass
 
+            # CRITICAL FIX: Normalize Windows backslash to Linux forward slash
+            filename = filename.replace("\\", "/").lstrip("/")
+            if not filename:
+                continue
+
             target_path = os.path.join(target_dir, filename)
-            if member.is_dir():
+            if member.is_dir() or filename.endswith("/"):
                 os.makedirs(target_path, exist_ok=True)
             else:
                 os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -333,7 +351,7 @@ def extract_archives(raw_root_dir: str, target_dir: str) -> List[str]:
             extracted_paths.append(archive_path)
             print(f"[OK] Extracted {os.path.basename(archive_path)}")
         except Exception as e:
-            print(f"[WARN] Failed to extract {archive_path}: {e}")
+            print(f"[WARN] Failed to extract {os.path.basename(archive_path)}: {type(e).__name__} - {e}")
 
     return extracted_paths
 
