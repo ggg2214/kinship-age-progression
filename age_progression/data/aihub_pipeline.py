@@ -201,9 +201,19 @@ def preprocess_aihub_datasets(
     total_imgs = len(img_paths)
     limit = total_imgs if (max_samples is None or max_samples <= 0) else min(max_samples, total_imgs)
     print(f"[INFO] Discovered {total_imgs} images, {len(json_paths)} JSON annotations, and {len(zip_paths)} archive files.")
-    print(f"[INFO] Target processing count: {limit} images (All available: {max_samples <= 0}).")
-    if total_imgs == 0 and len(zip_paths) > 0:
-        print(f"[TIP] 발견된 압축 파일이 {len(zip_paths)}개 있습니다. '--action extract'를 실행하여 고속 압축 해제를 먼저 진행해 주세요.")
+
+    # Fallback to Google Drive if raw_root_dir is empty
+    if total_imgs == 0 and len(zip_paths) == 0:
+        gdrive_fallback = "/content/drive/MyDrive/AIHUB Data"
+        if os.path.exists(gdrive_fallback) and os.path.abspath(raw_root_dir) != os.path.abspath(gdrive_fallback):
+            print(f"[INFO] '{raw_root_dir}'에 파일이 없어 Google Drive 원본 폴더('{gdrive_fallback}')를 자동 탐색합니다...")
+            return preprocess_aihub_datasets(
+                gdrive_fallback,
+                output_aligned_dir,
+                manifest_output_path,
+                target_size=target_size,
+                max_samples=max_samples
+            )
 
     # Strategy 1: Explicit family relationship keywords
     groups: Dict[str, Dict[str, str]] = {}
@@ -321,12 +331,67 @@ def preprocess_aihub_datasets(
                 except Exception:
                     continue
 
+    # Strategy 3: In-Memory Streaming Face Alignment from Zip Archives (Zero disk overflow)
+    if len(triplets) == 0 and total_imgs == 0 and len(zip_paths) > 0:
+        import io
+        print(f"[INFO] 80GB 압축 해제 없이 실시간 스트리밍(In-Memory) 256x256 얼굴 정렬을 가동합니다 (총 {len(zip_paths)}개 압축 파일)...")
+        limit_samples = max_samples if (max_samples is not None and max_samples > 0) else 9999999
+        idx = 0
+
+        for z_path in zip_paths:
+            if idx >= limit_samples:
+                break
+            try:
+                with zipfile.ZipFile(z_path, "r") as zf:
+                    for info in zf.infolist():
+                        if idx >= limit_samples:
+                            break
+                        fname = info.filename
+                        if fname.lower().endswith((".jpg", ".jpeg", ".png")):
+                            try:
+                                with zf.open(info) as f:
+                                    img_data = f.read()
+                                img = Image.open(io.BytesIO(img_data))
+                                c_name = f"korean_face_{idx:05d}.jpg"
+                                c_aligned_path = os.path.join(images_dir, c_name)
+                                crop_and_align_face(img, target_size=target_size).save(c_aligned_path, quality=95)
+
+                                src_age = extract_age_from_path(fname)
+                                tgt_age = min(75.0, src_age + 20.0)
+
+                                triplets.append({
+                                    "family_id": f"person_{idx:05d}",
+                                    "child_path": os.path.relpath(c_aligned_path, _project_root).replace("\\", "/"),
+                                    "father_path": None,
+                                    "mother_path": None,
+                                    "target_path": os.path.relpath(c_aligned_path, _project_root).replace("\\", "/"),
+                                    "source_age": float(src_age),
+                                    "target_age": float(tgt_age)
+                                })
+                                idx += 1
+                                if idx % 1000 == 0:
+                                    print(f"[PROGRESS] 실시간 256x256 정렬 진행 중: {idx}장 완료 (디스크 점유: 단 {idx * 50 / 1024:.1f} MB)...")
+                            except Exception:
+                                continue
+            except Exception:
+                continue
+
     # Write manifest
     os.makedirs(os.path.dirname(manifest_output_path) or ".", exist_ok=True)
     with open(manifest_output_path, "w", encoding="utf-8") as f:
         json.dump(triplets, f, indent=2, ensure_ascii=False)
 
     print(f"[OK] Preprocessed {len(triplets)} Korean face triplets -> {manifest_output_path}")
+
+    # Backup manifest to Google Drive if available
+    gdrive_backup = "/content/drive/MyDrive/AIHUB Data/manifest_aihub.json"
+    if os.path.exists("/content/drive/MyDrive/AIHUB Data"):
+        try:
+            shutil.copy2(manifest_output_path, gdrive_backup)
+            print(f"[BACKUP] manifest_aihub.json이 구글 드라이브에 안전하게 백업되었습니다 -> {gdrive_backup}")
+        except Exception:
+            pass
+
     return triplets
 
 
