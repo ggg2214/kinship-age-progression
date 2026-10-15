@@ -21,6 +21,7 @@ import shutil
 import tarfile
 import zipfile
 import re
+import unicodedata
 import argparse
 import subprocess
 from typing import List, Dict, Any, Optional, Tuple
@@ -211,13 +212,14 @@ def preprocess_aihub_datasets(
     zip_paths = [f for f in all_files if f.lower().endswith((".zip", ".tar", ".tar.gz", ".tgz"))]
 
     total_imgs = len(img_paths)
-    limit = total_imgs if (max_samples is None or max_samples <= 0) else min(max_samples, total_imgs)
+    limit = max_samples if (max_samples is not None and max_samples > 0) else 0
 
-    # 4-Dataset Detection Banner
-    has_aging = any("118" in f or "에이징" in f or "aging" in f.lower() for f in all_files)
-    has_family = any("045" in f or "가족" in f or "family" in f.lower() for f in all_files)
-    has_hair = any("헤어" in f or "hair" in f.lower() for f in all_files)
-    has_landmark = any("026" in f or "랜드마크" in f or "landmark" in f.lower() for f in all_files)
+    # 4-Dataset Detection Banner with NFC unicode normalization
+    all_files_norm = [unicodedata.normalize("NFC", f) for f in all_files]
+    has_aging = any("118" in f or "에이징" in f or "aging" in f.lower() for f in all_files_norm)
+    has_family = any("045" in f or "가족" in f or "family" in f.lower() for f in all_files_norm)
+    has_hair = any("헤어" in f or "hair" in f.lower() for f in all_files_norm)
+    has_landmark = any("026" in f or "랜드마크" in f or "landmark" in f.lower() for f in all_files_norm)
 
     print("\n" + "=" * 70)
     print(" 🧬 [AI Hub 4대 한국인 안면 데이터셋 통합 파이프라인 탐색 결과]")
@@ -400,7 +402,8 @@ def preprocess_aihub_datasets(
             if bname in already_aligned_zips:
                 continue
 
-            is_family_zip = any(k in z_path.lower() for k in ["045", "가족", "family", "kinship"])
+            norm_z = unicodedata.normalize("NFC", z_path).lower()
+            is_family_zip = any(k in norm_z for k in ["045", "가족", "family", "kinship"])
             try:
                 with zipfile.ZipFile(z_path, "r") as zf:
                     if is_family_zip:
