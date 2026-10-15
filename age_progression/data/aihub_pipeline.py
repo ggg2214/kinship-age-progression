@@ -171,7 +171,7 @@ def preprocess_aihub_datasets(
     output_aligned_dir: str,
     manifest_output_path: str,
     target_size: int = 256,
-    max_samples: int = 3000
+    max_samples: int = 0
 ) -> List[Dict[str, Any]]:
     """
     Processes all 4 AI Hub datasets:
@@ -179,7 +179,7 @@ def preprocess_aihub_datasets(
     - Detects family relationships, ages, and facial landmarks
     - If no explicit family keywords exist, intelligently converts Korean aging face dataset
       into valid self-conditioning and age progression triplets.
-    - Limits to max_samples to conserve disk space and prevent [Errno 28] disk full errors.
+    - If max_samples <= 0, processes ALL discovered images (e.g. all 33,846 images).
     """
     os.makedirs(output_aligned_dir, exist_ok=True)
     images_dir = os.path.join(output_aligned_dir, "images")
@@ -198,8 +198,11 @@ def preprocess_aihub_datasets(
     json_paths = {os.path.splitext(f)[0]: f for f in all_files if f.lower().endswith(".json")}
     zip_paths = [f for f in all_files if f.lower().endswith((".zip", ".tar", ".tar.gz", ".tgz"))]
 
-    print(f"[INFO] Discovered {len(img_paths)} images, {len(json_paths)} JSON annotations, and {len(zip_paths)} archive files.")
-    if len(img_paths) == 0 and len(zip_paths) > 0:
+    total_imgs = len(img_paths)
+    limit = total_imgs if (max_samples is None or max_samples <= 0) else min(max_samples, total_imgs)
+    print(f"[INFO] Discovered {total_imgs} images, {len(json_paths)} JSON annotations, and {len(zip_paths)} archive files.")
+    print(f"[INFO] Target processing count: {limit} images (All available: {max_samples <= 0}).")
+    if total_imgs == 0 and len(zip_paths) > 0:
         print(f"[TIP] 발견된 압축 파일이 {len(zip_paths)}개 있습니다. '--action extract'를 실행하여 고속 압축 해제를 먼저 진행해 주세요.")
 
     # Strategy 1: Explicit family relationship keywords
@@ -220,7 +223,7 @@ def preprocess_aihub_datasets(
             groups[parent_dir]["adult"] = p
 
     for grp_id, mem in groups.items():
-        if len(triplets) >= max_samples:
+        if len(triplets) >= limit:
             break
         child_raw = mem.get("child")
         if not child_raw:
@@ -271,9 +274,8 @@ def preprocess_aihub_datasets(
 
     # Strategy 2: Intelligent Aging & Individual Face Mapping (Fallback for 33k+ AI Hub aging dataset)
     if len(triplets) == 0 and len(img_paths) > 0:
-        print(f"[INFO] 가족 키워드가 없어 {len(img_paths)}장의 한국인 안면 데이터를 나이 변환 학습셋(최대 {max_samples}장)으로 스마트 변환합니다...")
-        step = max(1, len(img_paths) // max_samples)
-        selected_paths = img_paths[::step][:max_samples]
+        print(f"[INFO] 가족 키워드가 없어 {total_imgs}장의 한국인 안면 데이터를 나이 변환 학습셋(목표 {limit}장)으로 스마트 변환합니다...")
+        selected_paths = img_paths[:limit]
 
         folder_map: Dict[str, List[str]] = {}
         for p in selected_paths:
@@ -282,10 +284,10 @@ def preprocess_aihub_datasets(
 
         idx = 0
         for fld, paths in folder_map.items():
-            if len(triplets) >= max_samples:
+            if len(triplets) >= limit:
                 break
             for i, p in enumerate(paths):
-                if len(triplets) >= max_samples:
+                if len(triplets) >= limit:
                     break
                 try:
                     img = Image.open(p)
@@ -314,8 +316,8 @@ def preprocess_aihub_datasets(
                         "target_age": float(tgt_age)
                     })
                     idx += 1
-                    if idx % 500 == 0:
-                        print(f"[PROGRESS] 정렬 진행 중: {idx}/{len(selected_paths)}장 완료...")
+                    if idx % 2000 == 0 or idx == limit:
+                        print(f"[PROGRESS] 256x256 정렬 진행 중: {idx}/{limit}장 완료 ({idx/limit*100:.1f}%)...")
                 except Exception:
                     continue
 
@@ -450,7 +452,7 @@ if __name__ == "__main__":
     parser.add_argument("--aligned-dir", type=str, default="data_aihub_aligned")
     parser.add_argument("--manifest", type=str, default="data_aihub_aligned/manifest_aihub.json")
     parser.add_argument("--archive", type=str, default="data_aihub_aligned.tar.gz")
-    parser.add_argument("--max-samples", type=int, default=3000, help="Max aligned samples to prevent disk full")
+    parser.add_argument("--max-samples", type=int, default=0, help="Max aligned samples (0 for all available images)")
     args = parser.parse_args()
 
     if args.action == "download":
