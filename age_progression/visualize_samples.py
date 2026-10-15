@@ -151,16 +151,29 @@ def main():
                     import json
                     with open(m_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    samples = data.get("samples", [])
+                    m_dir = os.path.dirname(m_path)
                     for s in samples:
-                        c_p = s.get("child_path")
-                        if c_p and os.path.exists(c_p):
-                            child_face = c_p
-                            father_face = s.get("father_path") if s.get("father_path") and os.path.exists(s["father_path"]) else None
-                            mother_face = s.get("mother_path") if s.get("mother_path") and os.path.exists(s["mother_path"]) else None
+                        raw_c = s.get("child_path")
+                        if not raw_c:
+                            continue
+                        candidates = [
+                            raw_c,
+                            os.path.join(m_dir, raw_c),
+                            os.path.join(m_dir, "images", os.path.basename(raw_c)),
+                            os.path.join("/content/data_aihub_aligned/images", os.path.basename(raw_c)),
+                            os.path.join("/content/drive/MyDrive/AIHUB Data/images", os.path.basename(raw_c)),
+                            os.path.join(_project_root, raw_c)
+                        ]
+                        resolved_child = None
+                        for cand in candidates:
+                            if os.path.exists(cand):
+                                resolved_child = cand
+                                break
+                        if resolved_child:
+                            child_face = resolved_child
                             source_age = int(s.get("source_age", 5))
                             found_sample = True
-                            print(f"[INFO] Loaded real Korean face sample from manifest: {c_p} (Age: {source_age})")
+                            print(f"[INFO] Loaded real Korean face sample from manifest: {resolved_child} (Age: {source_age})")
                             break
                     if found_sample:
                         break
