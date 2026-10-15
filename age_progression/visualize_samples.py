@@ -151,6 +151,7 @@ def main():
                     import json
                     with open(m_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
+                    samples = data.get("samples", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
                     m_dir = os.path.dirname(m_path)
                     for s in samples:
                         raw_c = s.get("child_path")
@@ -171,17 +172,76 @@ def main():
                                 break
                         if resolved_child:
                             child_face = resolved_child
+                            father_face = s.get("father_path") if s.get("father_path") and os.path.exists(s["father_path"]) else None
+                            mother_face = s.get("mother_path") if s.get("mother_path") and os.path.exists(s["mother_path"]) else None
                             source_age = int(s.get("source_age", 5))
                             found_sample = True
                             print(f"[INFO] Loaded real Korean face sample from manifest: {resolved_child} (Age: {source_age})")
                             break
                     if found_sample:
                         break
-                except Exception:
+                except Exception as e:
                     pass
 
+        # Fallback 1: High quality Korean child & family photos in repository
         if not found_sample:
-            print("[INFO] No child image specified and no local manifest sample found. Using synthetic test mode...")
+            repo_candidates = [
+                (
+                    os.path.join(_project_root, "sample_data/family_001/child_age06.jpg"),
+                    os.path.join(_project_root, "sample_data/family_001/father_age38.jpg"),
+                    os.path.join(_project_root, "sample_data/family_001/mother_age35.jpg"),
+                    6
+                ),
+                (
+                    os.path.join(_project_root, "public/assets/real_korean_child_06.jpg"),
+                    os.path.join(_project_root, "public/assets/real_korean_father_38.jpg"),
+                    os.path.join(_project_root, "public/assets/real_korean_mother_36.jpg"),
+                    6
+                ),
+                (
+                    os.path.join(_project_root, "data_utkface/5_1_0_sample01.jpg"),
+                    None,
+                    None,
+                    5
+                )
+            ]
+            for c_cand, f_cand, m_cand, age_cand in repo_candidates:
+                if os.path.exists(c_cand):
+                    child_face = c_cand
+                    father_face = f_cand if f_cand and os.path.exists(f_cand) else None
+                    mother_face = m_cand if m_cand and os.path.exists(m_cand) else None
+                    source_age = age_cand
+                    found_sample = True
+                    print(f"[INFO] Loaded real Korean child & family photo from repository: {c_cand} (Age: {source_age})")
+                    break
+
+        # Fallback 2: Direct extraction from AI Hub zip archive in Google Drive
+        if not found_sample:
+            gdrive_raw = "/content/drive/MyDrive/AIHUB Data"
+            if os.path.exists(gdrive_raw):
+                import zipfile
+                zip_files = [os.path.join(gdrive_raw, f) for f in os.listdir(gdrive_raw) if f.lower().endswith(".zip")]
+                for zf_path in zip_files[:5]:
+                    try:
+                        with zipfile.ZipFile(zf_path, "r") as zf:
+                            for info in zf.infolist():
+                                if info.filename.lower().endswith((".jpg", ".jpeg", ".png")) and not info.filename.startswith("__MACOSX"):
+                                    extracted_path = os.path.join("outputs", "temp_child_sample.jpg")
+                                    os.makedirs("outputs", exist_ok=True)
+                                    with zf.open(info) as zf_img, open(extracted_path, "wb") as out_f:
+                                        out_f.write(zf_img.read())
+                                    child_face = extracted_path
+                                    source_age = 5
+                                    found_sample = True
+                                    print(f"[INFO] Extracted real face sample from AI Hub archive ({os.path.basename(zf_path)}): {info.filename}")
+                                    break
+                        if found_sample:
+                            break
+                    except Exception:
+                        pass
+
+        if not found_sample:
+            print("[INFO] No child image specified and no local face sample found. Using synthetic test mode...")
             child_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
             father_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
             mother_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
