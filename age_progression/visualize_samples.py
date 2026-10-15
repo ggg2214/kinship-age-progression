@@ -121,26 +121,62 @@ def main():
     parser.add_argument("--source-age", type=int, default=5, help="Child source age")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/age_progression_latest.pt", help="Checkpoint path")
     parser.add_argument("--output", type=str, default="outputs/timelapse_grid.png", help="Output image file path")
+    parser.add_argument("--device", type=str, default=None, help="Device to run inference on (cuda or cpu)")
+    parser.add_argument("--image-size", type=int, default=256, help="Image resolution")
     parser.add_argument("--test-run", action="store_true", help="Run with synthetic test faces")
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    config = AgeProgressionConfig(image_size=128, device=device)
+    device = args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu")
+    config = AgeProgressionConfig(image_size=args.image_size, device=device)
 
     print(f"[INFO] Initializing pipeline on {device}...")
     pipeline = AgeProgressionPipeline(config=config, checkpoint_path=args.checkpoint, device=device)
 
-    if args.test_run or args.child is None:
+    child_face = args.child
+    father_face = args.father
+    mother_face = args.mother
+    source_age = args.source_age
+
+    if child_face is None and not args.test_run:
+        manifest_candidates = [
+            "/content/data_aihub_aligned/manifest_aihub.json",
+            "/content/drive/MyDrive/AIHUB Data/manifest_aihub.json",
+            "data_aihub_aligned/manifest_aihub.json"
+        ]
+        found_sample = False
+        for m_path in manifest_candidates:
+            if os.path.exists(m_path):
+                try:
+                    import json
+                    with open(m_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    samples = data.get("samples", [])
+                    for s in samples:
+                        c_p = s.get("child_path")
+                        if c_p and os.path.exists(c_p):
+                            child_face = c_p
+                            father_face = s.get("father_path") if s.get("father_path") and os.path.exists(s["father_path"]) else None
+                            mother_face = s.get("mother_path") if s.get("mother_path") and os.path.exists(s["mother_path"]) else None
+                            source_age = int(s.get("source_age", 5))
+                            found_sample = True
+                            print(f"[INFO] Loaded real Korean face sample from manifest: {c_p} (Age: {source_age})")
+                            break
+                    if found_sample:
+                        break
+                except Exception:
+                    pass
+
+        if not found_sample:
+            print("[INFO] No child image specified and no local manifest sample found. Using synthetic test mode...")
+            child_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
+            father_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
+            mother_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
+    elif args.test_run:
         print("[INFO] Running in synthetic test mode (--test-run)...")
-        # Create synthetic face inputs in [-1, 1]
-        child_face = torch.randn(3, 128, 128).clamp(-1, 1)
-        father_face = torch.randn(3, 128, 128).clamp(-1, 1)
-        mother_face = torch.randn(3, 128, 128).clamp(-1, 1)
-    else:
-        child_face = args.child
-        father_face = args.father
-        mother_face = args.mother
+        child_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
+        father_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
+        mother_face = torch.randn(3, args.image_size, args.image_size).clamp(-1, 1)
 
     print(f"[INFO] Generating age progression for ages: {args.ages}...")
     grid = create_timeline_strip(

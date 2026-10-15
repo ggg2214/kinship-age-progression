@@ -101,6 +101,10 @@ def run_phase_training(
     print(f" [CURRICULUM LEARNING] Starting Phase {phase_num}: {phase_name}")
     print("=" * 78)
 
+    device_obj = torch.device(device)
+    model.to(device_obj)
+    loss_fn.to(device_obj)
+
     effective_batch_size = max(2, min(batch_size, len(dataset))) if len(dataset) >= 2 else 1
     loader = DataLoader(
         dataset,
