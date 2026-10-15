@@ -62,6 +62,12 @@ def safe_torch_save(obj: Any, save_path: str):
 
 
 def load_dataset_or_mock(manifest_path: Optional[str], image_size: int = 128, num_mock: int = 16, max_samples: Optional[int] = None) -> torch.utils.data.Dataset:
+    if manifest_path and not os.path.exists(manifest_path):
+        gdrive_manifest = "/content/drive/MyDrive/AIHUB Data/manifest_aihub.json"
+        if os.path.exists(gdrive_manifest):
+            print(f"[DATA] 로컬 매니페스트 대신 Google Drive 백업 매니페스트({gdrive_manifest})를 사용합니다.", flush=True)
+            manifest_path = gdrive_manifest
+
     if manifest_path and os.path.exists(manifest_path):
         print(f"[DATA] Loading dataset manifest: {manifest_path}...", flush=True)
         with open(manifest_path, "r", encoding="utf-8") as f:
@@ -199,42 +205,85 @@ def train_curriculum(
     # Focus on Image Reconstruction and Identity Preservation
     # -------------------------------------------------------------
     if 1 in phases:
-        ds1 = MockKinshipAgeDataset(num_samples=min(16, max_samples) if max_samples else 16, image_size=image_size)
-        run_phase_training(
-            phase_num=1,
-            phase_name="Foundation (Reconstruction & Identity)",
-            model=model,
-            loss_fn=loss_fn,
-            dataset=ds1,
-            epochs=epochs_per_phase,
-            batch_size=batch_size,
-            device=device,
-            loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0}
-        )
         ckpt_p1 = f"{base_ckpt_no_ext}_phase1_foundation{ext}"
-        safe_torch_save(model.state_dict(), ckpt_p1)
-        print(f"[CHECKPOINT] Phase 1 intermediate weights saved -> {ckpt_p1}", flush=True)
+        if os.path.exists(ckpt_p1) and resume_checkpoint is None:
+            print(f"[RESUME] Phase 1 체크포인트({ckpt_p1})가 이미 존재합니다. Phase 1 학습을 안전하게 건너뛰고 가중치를 로드합니다!", flush=True)
+            try:
+                model.load_state_dict(torch.load(ckpt_p1, map_location=device_obj))
+                print("[OK] Phase 1 가중치 로드 성공! Phase 2로 즉시 이동합니다.", flush=True)
+            except Exception as e:
+                print(f"[WARN] 가중치 로드 실패 ({e}), Phase 1을 재학습합니다.", flush=True)
+                ds1 = MockKinshipAgeDataset(num_samples=min(16, max_samples) if max_samples else 16, image_size=image_size)
+                run_phase_training(
+                    phase_num=1,
+                    phase_name="Foundation (Reconstruction & Identity)",
+                    model=model,
+                    loss_fn=loss_fn,
+                    dataset=ds1,
+                    epochs=epochs_per_phase,
+                    batch_size=batch_size,
+                    device=device,
+                    loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0}
+                )
+                safe_torch_save(model.state_dict(), ckpt_p1)
+        else:
+            ds1 = MockKinshipAgeDataset(num_samples=min(16, max_samples) if max_samples else 16, image_size=image_size)
+            run_phase_training(
+                phase_num=1,
+                phase_name="Foundation (Reconstruction & Identity)",
+                model=model,
+                loss_fn=loss_fn,
+                dataset=ds1,
+                epochs=epochs_per_phase,
+                batch_size=batch_size,
+                device=device,
+                loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0}
+            )
+            ckpt_p1 = f"{base_ckpt_no_ext}_phase1_foundation{ext}"
+            safe_torch_save(model.state_dict(), ckpt_p1)
+            print(f"[CHECKPOINT] Phase 1 intermediate weights saved -> {ckpt_p1}", flush=True)
 
     # -------------------------------------------------------------
     # Phase 2: Asian & Age Specialization (동양인 및 연령대 최적화)
     # Focus on Chronological Aging Curve & Feature Shifts
     # -------------------------------------------------------------
     if 2 in phases:
-        ds2 = load_dataset_or_mock(manifest_phase2, image_size=image_size, num_mock=16, max_samples=max_samples)
-        run_phase_training(
-            phase_num=2,
-            phase_name="Asian & Age Specialization (UTKFace / AFAD / AI Hub)",
-            model=model,
-            loss_fn=loss_fn,
-            dataset=ds2,
-            epochs=epochs_per_phase,
-            batch_size=batch_size,
-            device=device,
-            loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5}
-        )
         ckpt_p2 = f"{base_ckpt_no_ext}_phase2_aging{ext}"
-        safe_torch_save(model.state_dict(), ckpt_p2)
-        print(f"[CHECKPOINT] Phase 2 intermediate weights saved -> {ckpt_p2}", flush=True)
+        if os.path.exists(ckpt_p2) and resume_checkpoint is None:
+            print(f"[RESUME] Phase 2 체크포인트({ckpt_p2})가 이미 존재합니다. Phase 2 학습을 건너뛰고 가중치를 로드합니다!", flush=True)
+            try:
+                model.load_state_dict(torch.load(ckpt_p2, map_location=device_obj))
+                print("[OK] Phase 2 가중치 로드 성공! Phase 3으로 즉시 이동합니다.", flush=True)
+            except Exception:
+                ds2 = load_dataset_or_mock(manifest_phase2, image_size=image_size, num_mock=16, max_samples=max_samples)
+                run_phase_training(
+                    phase_num=2,
+                    phase_name="Asian & Age Specialization (UTKFace / AFAD / AI Hub)",
+                    model=model,
+                    loss_fn=loss_fn,
+                    dataset=ds2,
+                    epochs=epochs_per_phase,
+                    batch_size=batch_size,
+                    device=device,
+                    loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5}
+                )
+                safe_torch_save(model.state_dict(), ckpt_p2)
+        else:
+            ds2 = load_dataset_or_mock(manifest_phase2, image_size=image_size, num_mock=16, max_samples=max_samples)
+            run_phase_training(
+                phase_num=2,
+                phase_name="Asian & Age Specialization (UTKFace / AFAD / AI Hub)",
+                model=model,
+                loss_fn=loss_fn,
+                dataset=ds2,
+                epochs=epochs_per_phase,
+                batch_size=batch_size,
+                device=device,
+                loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5}
+            )
+            ckpt_p2 = f"{base_ckpt_no_ext}_phase2_aging{ext}"
+            safe_torch_save(model.state_dict(), ckpt_p2)
+            print(f"[CHECKPOINT] Phase 2 intermediate weights saved -> {ckpt_p2}", flush=True)
 
     # -------------------------------------------------------------
     # Phase 3: Kinship & Longitudinal Fusion (노화 패턴 및 혈연 주입)
