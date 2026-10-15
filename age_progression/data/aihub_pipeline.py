@@ -335,12 +335,37 @@ def preprocess_aihub_datasets(
     if len(triplets) == 0 and total_imgs == 0 and len(zip_paths) > 0:
         import io
         print(f"[INFO] 80GB 압축 해제 없이 실시간 스트리밍(In-Memory) 256x256 얼굴 정렬을 가동합니다 (총 {len(zip_paths)}개 압축 파일)...")
+
+        # Smart resume: check if manifest already has existing samples
+        done_zips_path = os.path.join(output_aligned_dir, ".aligned_zips.txt")
+        already_aligned_zips = set()
+        if os.path.exists(done_zips_path):
+            try:
+                with open(done_zips_path, "r", encoding="utf-8") as f:
+                    already_aligned_zips = {line.strip() for line in f if line.strip()}
+            except Exception:
+                pass
+
+        if os.path.exists(manifest_output_path):
+            try:
+                with open(manifest_output_path, "r", encoding="utf-8") as f:
+                    prev_triplets = json.load(f)
+                    if isinstance(prev_triplets, list) and len(prev_triplets) > 0:
+                        triplets = prev_triplets
+                        print(f"[RESUME] 이전에 정제된 {len(triplets)}장의 얼굴 데이터를 감지했습니다. 멈춘 지점부터 이어서 진행합니다!")
+            except Exception:
+                pass
+
         limit_samples = max_samples if (max_samples is not None and max_samples > 0) else 9999999
-        idx = 0
+        idx = len(triplets)
 
         for z_path in zip_paths:
             if idx >= limit_samples:
                 break
+            bname = os.path.basename(z_path)
+            if bname in already_aligned_zips:
+                continue
+
             try:
                 with zipfile.ZipFile(z_path, "r") as zf:
                     for info in zf.infolist():
@@ -371,8 +396,21 @@ def preprocess_aihub_datasets(
                                 idx += 1
                                 if idx % 1000 == 0:
                                     print(f"[PROGRESS] 실시간 256x256 정렬 진행 중: {idx}장 완료 (디스크 점유: 단 {idx * 50 / 1024:.1f} MB)...")
+                                    # Intermediate checkpoint
+                                    try:
+                                        with open(manifest_output_path, "w", encoding="utf-8") as mf:
+                                            json.dump(triplets, mf, indent=2, ensure_ascii=False)
+                                    except Exception:
+                                        pass
                             except Exception:
                                 continue
+
+                already_aligned_zips.add(bname)
+                try:
+                    with open(done_zips_path, "a", encoding="utf-8") as f:
+                        f.write(bname + "\n")
+                except Exception:
+                    pass
             except Exception:
                 continue
 
@@ -478,9 +516,18 @@ def safe_extract_zip(zip_path: str, target_dir: str):
 def extract_archives(raw_root_dir: str, target_dir: str) -> List[str]:
     """
     Extracts all .zip, .tar, .tar.gz files from raw_root_dir into target_dir.
-    Useful for unpacking Google Drive AI Hub archives into Colab's high-speed local disk.
+    Automatically resumes by skipping archives that have already been extracted.
     """
     os.makedirs(target_dir, exist_ok=True)
+    done_log_path = os.path.join(target_dir, ".extracted_archives.txt")
+    already_done = set()
+    if os.path.exists(done_log_path):
+        try:
+            with open(done_log_path, "r", encoding="utf-8") as f:
+                already_done = {line.strip() for line in f if line.strip()}
+        except Exception:
+            pass
+
     archive_files = []
     for root, _, files in os.walk(raw_root_dir):
         for f in files:
@@ -488,10 +535,14 @@ def extract_archives(raw_root_dir: str, target_dir: str) -> List[str]:
             if ext.endswith((".zip", ".tar", ".tar.gz", ".tgz")):
                 archive_files.append(os.path.join(root, f))
 
-    print(f"[INFO] Found {len(archive_files)} archive file(s) in {raw_root_dir}...")
+    print(f"[INFO] Found {len(archive_files)} archive file(s) in {raw_root_dir} (Already extracted: {len(already_done)})...")
     extracted_paths = []
     for archive_path in archive_files:
-        print(f"[INFO] Extracting: {os.path.basename(archive_path)} -> {target_dir}...")
+        bname = os.path.basename(archive_path)
+        if bname in already_done:
+            continue
+
+        print(f"[INFO] Extracting: {bname} -> {target_dir}...")
         try:
             if archive_path.lower().endswith(".zip"):
                 safe_extract_zip(archive_path, target_dir)
@@ -499,9 +550,15 @@ def extract_archives(raw_root_dir: str, target_dir: str) -> List[str]:
                 with tarfile.open(archive_path, "r:*") as tar_ref:
                     tar_ref.extractall(target_dir)
             extracted_paths.append(archive_path)
-            print(f"[OK] Extracted {os.path.basename(archive_path)}")
+            already_done.add(bname)
+            try:
+                with open(done_log_path, "a", encoding="utf-8") as f:
+                    f.write(bname + "\n")
+            except Exception:
+                pass
+            print(f"[OK] Extracted {bname}")
         except Exception as e:
-            print(f"[WARN] Failed to extract {os.path.basename(archive_path)}: {type(e).__name__} - {e}")
+            print(f"[WARN] Failed to extract {bname}: {type(e).__name__} - {e}")
 
     return extracted_paths
 
