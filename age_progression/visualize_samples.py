@@ -33,7 +33,7 @@ def create_timeline_strip(
     father_img: Optional[Union[str, Image.Image, torch.Tensor]] = None,
     mother_img: Optional[Union[str, Image.Image, torch.Tensor]] = None,
     source_age: int = 5,
-    thumb_size: int = 160
+    thumb_size: int = 140
 ) -> Image.Image:
     """
     Renders an age progression timeline from given child and optional parents.
@@ -69,9 +69,9 @@ def create_timeline_strip(
 
     # 3. Canvas layout calculation
     total_cols = len(ages) + 1  # Source + Ages
-    header_height = 40
+    header_height = 42
     footer_height = 36
-    padding = 14
+    padding = 12
     total_width = total_cols * thumb_size + (total_cols + 1) * padding
     total_height = thumb_size + header_height + footer_height + padding * 2
 
@@ -117,7 +117,7 @@ def main():
     parser.add_argument("--child", type=str, default=None, help="Path to child face image")
     parser.add_argument("--father", type=str, default=None, help="Path to father face image (optional)")
     parser.add_argument("--mother", type=str, default=None, help="Path to mother face image (optional)")
-    parser.add_argument("--ages", type=int, nargs="+", default=[10, 20, 30, 40, 50, 60], help="List of target ages")
+    parser.add_argument("--ages", type=int, nargs="+", default=[10, 20, 30, 40, 50, 60, 70, 80], help="List of target ages")
     parser.add_argument("--source-age", type=int, default=5, help="Child source age")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/age_progression_latest.pt", help="Checkpoint path")
     parser.add_argument("--output", type=str, default="outputs/timelapse_grid.png", help="Output image file path")

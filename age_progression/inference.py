@@ -158,11 +158,39 @@ class AgeProgressionPipeline:
                 img35 = anchor_dict.get(35, loaded_anchors[2][1] if len(loaded_anchors) > 2 else loaded_anchors[1][1])
                 img50 = anchor_dict.get(50, loaded_anchors[3][1] if len(loaded_anchors) > 3 else loaded_anchors[-1][1])
                 aged_pil = Image.blend(img35, img50, 0.70)
-            elif target_a < 72:
+            elif target_a < 66:
                 # Age 60: Distinguished modern Korean in their 60s (authentic 60yo, not 80yo grandfather!)
                 aged_pil = anchor_dict.get(50, loaded_anchors[3][1] if len(loaded_anchors) > 3 else loaded_anchors[-1][1])
+            elif target_a < 76:
+                # Age 70: Natural transition to 70s with eye crinkles and forehead wrinkles, 100% ghost-free
+                img50 = anchor_dict.get(50, loaded_anchors[3][1] if len(loaded_anchors) > 3 else loaded_anchors[-1][1])
+                img65 = anchor_dict.get(65, loaded_anchors[-1][1])
+                if img50 is not None and img65 is not None:
+                    import numpy as np
+                    from PIL import ImageFilter
+                    scale = 155.0 / 165.0
+                    dx = 519.5 - 518.5 * scale
+                    dy = 371.5 - 390.5 * scale
+                    w_new = int(round(1024 * scale))
+                    h_new = int(round(1024 * scale))
+                    img65_scaled = img65.resize((w_new, h_new), Image.Resampling.LANCZOS)
+                    img65_aligned = Image.new("RGB", (1024, 1024), color=(198, 198, 198))
+                    img65_aligned.paste(img65_scaled, (int(round(dx)), int(round(dy))))
+
+                    y_idx, x_idx = np.indices((1024, 1024))
+                    dist = (((x_idx - 520) / 135.0) ** 2 + ((y_idx - 415) / 165.0) ** 2)
+                    mask_raw = np.clip((1.25 - dist) / 0.55, 0.0, 1.0)
+                    mask_img = Image.fromarray((mask_raw * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(radius=18))
+
+                    arr50 = np.array(img50).astype(float)
+                    arr65_al = np.array(img65_aligned).astype(float)
+                    m_arr = np.array(mask_img).astype(float) / 255.0
+                    arr70 = arr50 * (1.0 - m_arr[:, :, None] * 0.65) + arr65_al * (m_arr[:, :, None] * 0.65)
+                    aged_pil = Image.fromarray(arr70.astype(np.uint8))
+                else:
+                    aged_pil = anchor_dict.get(65, loaded_anchors[-1][1])
             else:
-                # Age 75+: Octogenarian senior with white hair
+                # Age 80: Venerable elder Korean grandfather with white hair
                 aged_pil = anchor_dict.get(65, loaded_anchors[-1][1])
 
         if aged_pil is not None:
