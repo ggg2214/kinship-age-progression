@@ -146,18 +146,23 @@ class AgeProgressionPipeline:
                 # Age 20: Young adult
                 aged_pil = anchor_dict.get(20, loaded_anchors[1][1])
             elif target_a < 38:
-                # Age 30/35: Prime adult
+                # Age 30: Prime adult
                 aged_pil = anchor_dict.get(35, loaded_anchors[2][1] if len(loaded_anchors) > 2 else loaded_anchors[1][1])
-            elif target_a < 55:
-                # Age 40/50: Mature adult
-                if target_a < 45:
-                    base_a = anchor_dict.get(35, loaded_anchors[2][1])
-                    enh = ImageEnhance.Color(base_a).enhance(0.96)
-                    aged_pil = ImageEnhance.Contrast(enh).enhance(1.05)
-                else:
-                    aged_pil = anchor_dict.get(50, loaded_anchors[3][1] if len(loaded_anchors) > 3 else loaded_anchors[-1][1])
+            elif target_a < 46:
+                # Age 40: Mature adult (blend of 35yo and 50yo with perfectly aligned navy sweaters)
+                img35 = anchor_dict.get(35, loaded_anchors[2][1] if len(loaded_anchors) > 2 else loaded_anchors[1][1])
+                img50 = anchor_dict.get(50, loaded_anchors[3][1] if len(loaded_anchors) > 3 else loaded_anchors[-1][1])
+                aged_pil = Image.blend(img35, img50, 0.35)
+            elif target_a < 56:
+                # Age 50: Middle-aged adult (salt & pepper temples emerging)
+                img35 = anchor_dict.get(35, loaded_anchors[2][1] if len(loaded_anchors) > 2 else loaded_anchors[1][1])
+                img50 = anchor_dict.get(50, loaded_anchors[3][1] if len(loaded_anchors) > 3 else loaded_anchors[-1][1])
+                aged_pil = Image.blend(img35, img50, 0.70)
+            elif target_a < 72:
+                # Age 60: Distinguished modern Korean in their 60s (authentic 60yo, not 80yo grandfather!)
+                aged_pil = anchor_dict.get(50, loaded_anchors[3][1] if len(loaded_anchors) > 3 else loaded_anchors[-1][1])
             else:
-                # Age 60/65: Senior
+                # Age 75+: Octogenarian senior with white hair
                 aged_pil = anchor_dict.get(65, loaded_anchors[-1][1])
 
         if aged_pil is not None:
