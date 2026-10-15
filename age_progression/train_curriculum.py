@@ -72,7 +72,10 @@ def load_dataset_or_mock(manifest_path: Optional[str], image_size: int = 128, nu
         print(f"[DATA] Loading dataset manifest: {manifest_path}...", flush=True)
         with open(manifest_path, "r", encoding="utf-8") as f:
             samples = json.load(f)
-        if max_samples and len(samples) > max_samples:
+        if len(samples) == 1:
+            print(f"[DATA] 단일 샘플을 감지하여 안정적인 배치 학습(Batch Size >= 2)을 위해 4회 복제 증강합니다.", flush=True)
+            samples = samples * 4
+        elif max_samples and len(samples) > max_samples:
             print(f"[DATA] Slicing dataset from {len(samples)} to {max_samples} samples for curriculum stage.", flush=True)
             samples = samples[:max_samples]
         ds = KinshipAgeDataset(samples=samples, image_size=image_size, is_train=True)
@@ -98,12 +101,13 @@ def run_phase_training(
     print(f" [CURRICULUM LEARNING] Starting Phase {phase_num}: {phase_name}")
     print("=" * 78)
 
-    device_obj = torch.device(device)
+    effective_batch_size = max(2, min(batch_size, len(dataset))) if len(dataset) >= 2 else 1
     loader = DataLoader(
         dataset,
-        batch_size=batch_size,
+        batch_size=effective_batch_size,
         shuffle=True,
-        collate_fn=collate_kinship_batch if isinstance(dataset, KinshipAgeDataset) else None
+        collate_fn=collate_kinship_batch if isinstance(dataset, KinshipAgeDataset) else None,
+        drop_last=(len(dataset) > effective_batch_size)
     )
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 

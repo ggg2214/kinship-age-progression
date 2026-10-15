@@ -87,7 +87,13 @@ class ArcFaceEncoder(nn.Module):
         h4 = self.layer4(h3)  # Shape: (B, 2048, H/32, W/32)
 
         feat_pooled = self.avgpool(h4).flatten(1)
-        emb = self.bn_fc(self.fc(feat_pooled))
+        fc_out = self.fc(feat_pooled)
+        if fc_out.shape[0] == 1 and self.bn_fc.training:
+            self.bn_fc.eval()
+            emb = self.bn_fc(fc_out)
+            self.bn_fc.train()
+        else:
+            emb = self.bn_fc(fc_out)
         
         # ArcFace requires L2 normalization of identity embeddings
         emb_norm = F.normalize(emb, p=2, dim=-1)
