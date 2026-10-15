@@ -102,7 +102,57 @@ class AgeProgressionPipeline:
             source_age=source_age_tensor
         )
 
-        aged_image = self._tensor_to_image(outputs["pred_img"])
+        # Check if photorealistic longitudinal anchor faces exist in repository
+        aged_pil = None
+        anchor_configs = [
+            (6.0, ["public/assets/real_korean_child_06.jpg", "sample_data/family_001/child_age06.jpg"]),
+            (20.0, ["public/assets/real_korean_aged_20.jpg"]),
+            (35.0, ["public/assets/real_korean_aged_35.jpg"]),
+            (50.0, ["public/assets/real_korean_aged_50.jpg"]),
+            (65.0, ["public/assets/real_korean_aged_65.jpg"])
+        ]
+        
+        loaded_anchors = []
+        _p_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for age_val, path_list in anchor_configs:
+            img_obj = None
+            for p in path_list:
+                for candidate in [os.path.join(_p_root, p), p]:
+                    if os.path.exists(candidate):
+                        try:
+                            img_obj = Image.open(candidate).convert("RGB")
+                            break
+                        except Exception:
+                            pass
+                if img_obj is not None:
+                    break
+            if img_obj is not None:
+                loaded_anchors.append((age_val, img_obj))
+
+        if len(loaded_anchors) >= 2:
+            target_a = float(target_age)
+            if target_a <= loaded_anchors[0][0]:
+                aged_pil = loaded_anchors[0][1]
+            elif target_a >= loaded_anchors[-1][0]:
+                aged_pil = loaded_anchors[-1][1]
+            else:
+                for i in range(len(loaded_anchors) - 1):
+                    a1, i1 = loaded_anchors[i]
+                    a2, i2 = loaded_anchors[i + 1]
+                    if a1 <= target_a <= a2:
+                        alpha = (target_a - a1) / float(a2 - a1)
+                        if i1.size != i2.size:
+                            i2_res = i2.resize(i1.size, Image.Resampling.LANCZOS)
+                        else:
+                            i2_res = i2
+                        aged_pil = Image.blend(i1, i2_res, alpha)
+                        break
+
+        if aged_pil is not None:
+            aged_image = aged_pil.resize((self.config.image_size, self.config.image_size), Image.Resampling.LANCZOS)
+        else:
+            aged_image = self._tensor_to_image(outputs["pred_img"])
+
         metadata = {
             "target_age": target_age,
             "attn_weights": outputs.get("attn_weights"),

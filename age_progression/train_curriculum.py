@@ -319,8 +319,8 @@ def train_curriculum(
     # Strong Identity Weight (id=3.0) to prevent style entanglement!
     # -------------------------------------------------------------
     if 4 in phases:
-        manifest_phase4 = kwargs.get("manifest_phase4", None)
-        ds4 = load_dataset_or_mock(manifest_phase4, image_size=image_size, num_mock=16, max_samples=max_samples)
+        m_p4_target = manifest_phase4 or kwargs.get("manifest_phase4", None) or manifest_phase2
+        ds4 = load_dataset_or_mock(m_p4_target, image_size=image_size, num_mock=16, max_samples=max_samples)
         run_phase_training(
             phase_num=4,
             phase_name="Hairstyle & Detail Tuning (AI Hub Hairstyle & Landmark)",
