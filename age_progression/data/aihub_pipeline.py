@@ -282,22 +282,30 @@ def preprocess_aihub_datasets(
         except Exception:
             continue
 
-    # Strategy 2: Intelligent Aging & Individual Face Mapping (Fallback for 33k+ AI Hub aging dataset)
-    if len(triplets) == 0 and len(img_paths) > 0:
-        print(f"[INFO] 가족 키워드가 없어 {total_imgs}장의 한국인 안면 데이터를 나이 변환 학습셋(목표 {limit}장)으로 스마트 변환합니다...")
-        selected_paths = img_paths[:limit]
+    # Strategy 2: Intelligent Aging, Hairstyle & Landmark Face Mapping
+    used_img_paths = set()
+    for mem in groups.values():
+        for k in ["child", "father", "mother", "adult"]:
+            if mem.get(k):
+                used_img_paths.add(mem[k])
+
+    remaining_img_paths = [p for p in img_paths if p not in used_img_paths]
+    if len(remaining_img_paths) > 0 and (limit <= 0 or len(triplets) < limit):
+        rem_limit = (limit - len(triplets)) if limit > 0 else len(remaining_img_paths)
+        print(f"[INFO] 가족 데이터({len(triplets)}쌍) 외에 {len(remaining_img_paths)}장의 에이징/헤어스타일/랜드마크 안면 데이터를 통합 정제합니다 (추가 목표: {rem_limit}장)...")
+        selected_paths = remaining_img_paths[:rem_limit]
 
         folder_map: Dict[str, List[str]] = {}
         for p in selected_paths:
             fld = os.path.dirname(p)
             folder_map.setdefault(fld, []).append(p)
 
-        idx = 0
+        idx = len(triplets)
         for fld, paths in folder_map.items():
-            if len(triplets) >= limit:
+            if limit > 0 and len(triplets) >= limit:
                 break
             for i, p in enumerate(paths):
-                if len(triplets) >= limit:
+                if limit > 0 and len(triplets) >= limit:
                     break
                 try:
                     img = Image.open(p)
@@ -327,14 +335,14 @@ def preprocess_aihub_datasets(
                     })
                     idx += 1
                     if idx % 2000 == 0 or idx == limit:
-                        print(f"[PROGRESS] 256x256 정렬 진행 중: {idx}/{limit}장 완료 ({idx/limit*100:.1f}%)...")
+                        print(f"[PROGRESS] 256x256 정렬 진행 중: {idx}장 완료...")
                 except Exception:
                     continue
 
     # Strategy 3: In-Memory Streaming Face Alignment from Zip Archives (Zero disk overflow)
-    if len(triplets) == 0 and total_imgs == 0 and len(zip_paths) > 0:
+    if len(zip_paths) > 0 and (limit <= 0 or len(triplets) < limit):
         import io
-        print(f"[INFO] 80GB 압축 해제 없이 실시간 스트리밍(In-Memory) 256x256 얼굴 정렬을 가동합니다 (총 {len(zip_paths)}개 압축 파일)...")
+        print(f"[INFO] 압축 파일 {len(zip_paths)}개에서 80GB 압축 해제 없이 실시간 스트리밍(In-Memory) 256x256 얼굴 정렬을 가동합니다...")
 
         # Smart resume: check if manifest already has existing samples
         done_zips_path = os.path.join(output_aligned_dir, ".aligned_zips.txt")
