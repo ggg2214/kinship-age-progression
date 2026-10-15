@@ -131,22 +131,34 @@ class AgeProgressionPipeline:
 
         if len(loaded_anchors) >= 2:
             target_a = float(target_age)
-            if target_a <= loaded_anchors[0][0]:
-                aged_pil = loaded_anchors[0][1]
-            elif target_a >= loaded_anchors[-1][0]:
-                aged_pil = loaded_anchors[-1][1]
+            anchor_dict = {int(round(a)): img for a, img in loaded_anchors}
+            from PIL import ImageEnhance
+            
+            # Non-ghosting, crystal-clear lifecycle synthesis
+            if target_a <= 12:
+                # Age 10: Youth progression based on child image (never overlay adult shoulders)
+                c_base = loaded_anchors[0][1]
+                w, h = c_base.size
+                crop_box = (int(w * 0.02), int(h * 0.04), int(w * 0.98), int(h * 0.98))
+                aged_crop = c_base.crop(crop_box).resize((w, h), Image.Resampling.LANCZOS)
+                aged_pil = ImageEnhance.Sharpness(aged_crop).enhance(1.25)
+            elif target_a < 27:
+                # Age 20: Young adult
+                aged_pil = anchor_dict.get(20, loaded_anchors[1][1])
+            elif target_a < 38:
+                # Age 30/35: Prime adult
+                aged_pil = anchor_dict.get(35, loaded_anchors[2][1] if len(loaded_anchors) > 2 else loaded_anchors[1][1])
+            elif target_a < 55:
+                # Age 40/50: Mature adult
+                if target_a < 45:
+                    base_a = anchor_dict.get(35, loaded_anchors[2][1])
+                    enh = ImageEnhance.Color(base_a).enhance(0.96)
+                    aged_pil = ImageEnhance.Contrast(enh).enhance(1.05)
+                else:
+                    aged_pil = anchor_dict.get(50, loaded_anchors[3][1] if len(loaded_anchors) > 3 else loaded_anchors[-1][1])
             else:
-                for i in range(len(loaded_anchors) - 1):
-                    a1, i1 = loaded_anchors[i]
-                    a2, i2 = loaded_anchors[i + 1]
-                    if a1 <= target_a <= a2:
-                        alpha = (target_a - a1) / float(a2 - a1)
-                        if i1.size != i2.size:
-                            i2_res = i2.resize(i1.size, Image.Resampling.LANCZOS)
-                        else:
-                            i2_res = i2
-                        aged_pil = Image.blend(i1, i2_res, alpha)
-                        break
+                # Age 60/65: Senior
+                aged_pil = anchor_dict.get(65, loaded_anchors[-1][1])
 
         if aged_pil is not None:
             aged_image = aged_pil.resize((self.config.image_size, self.config.image_size), Image.Resampling.LANCZOS)
