@@ -261,7 +261,7 @@ def preprocess_aihub_datasets(
             groups[parent_dir]["adult"] = p
 
     for grp_id, mem in groups.items():
-        if len(triplets) >= limit:
+        if limit > 0 and len(triplets) >= limit:
             break
         child_raw = mem.get("child")
         if not child_raw:

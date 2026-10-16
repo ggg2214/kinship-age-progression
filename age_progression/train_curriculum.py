@@ -32,6 +32,7 @@ from age_progression.config import AgeProgressionConfig
 from age_progression.models.full_model import AgeProgressionModel
 from age_progression.losses.total_loss import TotalAgeProgressionLoss
 from age_progression.data.dataset import KinshipAgeDataset, MockKinshipAgeDataset, collate_kinship_batch
+from age_progression.data.large_scale_loader import ensure_large_scale_manifest
 
 
 def safe_torch_save(obj: Any, save_path: str):
@@ -61,26 +62,52 @@ def safe_torch_save(obj: Any, save_path: str):
 
 
 
-def load_dataset_or_mock(manifest_path: Optional[str], image_size: int = 128, num_mock: int = 16, max_samples: Optional[int] = None) -> torch.utils.data.Dataset:
+def load_dataset_or_mock(
+    manifest_path: Optional[str],
+    image_size: int = 128,
+    num_mock: int = 16,
+    max_samples: Optional[int] = None,
+    auto_large_scale: bool = True
+) -> torch.utils.data.Dataset:
     if manifest_path and not os.path.exists(manifest_path):
         gdrive_manifest = "/content/drive/MyDrive/AIHUB Data/manifest_aihub.json"
         if os.path.exists(gdrive_manifest):
             print(f"[DATA] 로컬 매니페스트 대신 Google Drive 백업 매니페스트({gdrive_manifest})를 사용합니다.", flush=True)
             manifest_path = gdrive_manifest
 
+    samples = []
     if manifest_path and os.path.exists(manifest_path):
-        print(f"[DATA] Loading dataset manifest: {manifest_path}...", flush=True)
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            samples = json.load(f)
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                samples = data if isinstance(data, list) else data.get("samples", [])
+        except Exception as e:
+            print(f"[DATA] 매니페스트 로드 중 예외 발생: {e}", flush=True)
+
+    # If samples are fewer than 50 (e.g. single sample or test run), automatically aggregate large-scale multi-datasets
+    if auto_large_scale and len(samples) < 50:
+        print(f"[DATA] 소규모/단일 샘플({len(samples)}개) 감지 ➔ 실전 대규모 데이터셋(AI Hub + FG-NET + UTKFace) 자동 확장을 가동합니다!", flush=True)
+        try:
+            expanded_manifest = ensure_large_scale_manifest(preferred_manifest=manifest_path)
+            if os.path.exists(expanded_manifest):
+                with open(expanded_manifest, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    samples = data if isinstance(data, list) else data.get("samples", [])
+                manifest_path = expanded_manifest
+        except Exception as e:
+            print(f"[DATA] 대규모 데이터셋 자동 집계 알림: {e}", flush=True)
+
+    if samples:
         if len(samples) == 1:
-            print(f"[DATA] 단일 샘플을 감지하여 안정적인 배치 학습(Batch Size >= 2)을 위해 4회 복제 증강합니다.", flush=True)
+            print(f"[DATA] 안정적인 배치 학습(Batch Size >= 2)을 위해 4회 복제 증강합니다.", flush=True)
             samples = samples * 4
         elif max_samples and len(samples) > max_samples:
             print(f"[DATA] Slicing dataset from {len(samples)} to {max_samples} samples for curriculum stage.", flush=True)
             samples = samples[:max_samples]
         ds = KinshipAgeDataset(samples=samples, image_size=image_size, is_train=True)
-        print(f"[DATA] Loaded {len(ds)} samples from manifest.", flush=True)
+        print(f"[DATA] Loaded {len(ds):,} samples from manifest ({manifest_path}).", flush=True)
         return ds
+
     print(f"[DATA] Manifest not found ({manifest_path}). Using Mock dataset ({num_mock} samples) for smoke testing.", flush=True)
     return MockKinshipAgeDataset(num_samples=num_mock, image_size=image_size)
 
@@ -95,7 +122,9 @@ def run_phase_training(
     batch_size: int = 2,
     lr: float = 2e-4,
     device: str = "cpu",
-    loss_weights: Optional[Dict[str, float]] = None
+    loss_weights: Optional[Dict[str, float]] = None,
+    num_workers: Optional[int] = None,
+    use_amp: bool = True
 ):
     print("\n" + "=" * 78)
     print(f" [CURRICULUM LEARNING] Starting Phase {phase_num}: {phase_name}")
@@ -106,14 +135,23 @@ def run_phase_training(
     loss_fn.to(device_obj)
 
     effective_batch_size = max(2, min(batch_size, len(dataset))) if len(dataset) >= 2 else 1
+    workers = num_workers if num_workers is not None else (2 if (device == "cuda" and os.name != "nt") else 0)
+    pin_mem = (device == "cuda")
+
     loader = DataLoader(
         dataset,
         batch_size=effective_batch_size,
         shuffle=True,
         collate_fn=collate_kinship_batch if isinstance(dataset, KinshipAgeDataset) else None,
-        drop_last=(len(dataset) > effective_batch_size)
+        drop_last=(len(dataset) > effective_batch_size),
+        num_workers=workers,
+        pin_memory=pin_mem
     )
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+
+    # AMP GradScaler for fast, low-memory GPU training
+    enable_amp = (device == "cuda" and use_amp)
+    scaler = torch.cuda.amp.GradScaler(enabled=enable_amp)
 
     # Adjust loss weights for curriculum stage if specified
     if loss_weights:
@@ -123,6 +161,7 @@ def run_phase_training(
         loss_fn.lambda_kinship = loss_weights.get("kinship", loss_fn.lambda_kinship)
 
     print(f"[CONFIG] Loss Weights: Recon={loss_fn.lambda_recon}, ID={loss_fn.lambda_id}, Age={loss_fn.lambda_age}, Kinship={loss_fn.lambda_kinship}")
+    print(f"[CONFIG] Batch Size: {effective_batch_size} | Workers: {workers} | AMP Enabled: {enable_amp} | Total Batches: {len(loader)}")
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -139,34 +178,63 @@ def run_phase_training(
             target_age = batch["target_age"].to(device_obj)
             source_age = batch["source_age"].to(device_obj)
 
-            outputs = model(
-                child_img=child_img,
-                target_age=target_age,
-                father_img=father_img,
-                mother_img=mother_img,
-                source_age=source_age
-            )
+            if enable_amp:
+                with torch.cuda.amp.autocast():
+                    outputs = model(
+                        child_img=child_img,
+                        target_age=target_age,
+                        father_img=father_img,
+                        mother_img=mother_img,
+                        source_age=source_age
+                    )
+                    losses = loss_fn(
+                        model_outputs=outputs,
+                        child_img=child_img,
+                        target_age=target_age,
+                        ground_truth_target_img=gt_img
+                    )
+                    loss = losses["loss_total"]
 
-            losses = loss_fn(
-                model_outputs=outputs,
-                child_img=child_img,
-                target_age=target_age,
-                ground_truth_target_img=gt_img
-            )
-
-            loss = losses["loss_total"]
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
-            optimizer.step()
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                outputs = model(
+                    child_img=child_img,
+                    target_age=target_age,
+                    father_img=father_img,
+                    mother_img=mother_img,
+                    source_age=source_age
+                )
+                losses = loss_fn(
+                    model_outputs=outputs,
+                    child_img=child_img,
+                    target_age=target_age,
+                    ground_truth_target_img=gt_img
+                )
+                loss = losses["loss_total"]
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+                optimizer.step()
 
             running_loss += loss.item()
 
-            if (step + 1) % 10 == 0 or (step + 1) == len(loader):
+            step_count = step + 1
+            report_interval = max(1, min(25, len(loader) // 10))
+            if step_count % report_interval == 0 or step_count == len(loader):
+                elapsed = time.time() - t0
+                speed = (step_count * effective_batch_size) / max(0.001, elapsed)
+                remaining_steps = len(loader) - step_count
+                eta_seconds = remaining_steps * (elapsed / step_count)
+                eta_str = f"{int(eta_seconds // 60)}m {int(eta_seconds % 60):02d}s"
                 print(
-                    f"  Phase {phase_num} [Ep {epoch}/{epochs} | Step {step+1:03d}/{len(loader):03d}] "
+                    f"  Phase {phase_num} [Ep {epoch}/{epochs} | Step {step_count:04d}/{len(loader):04d}] "
                     f"Loss: {loss.item():.4f} "
                     f"(Recon: {losses['loss_recon'].item():.3f}, ID: {losses['loss_id'].item():.3f}, "
-                    f"Age: {losses['loss_age'].item():.3f}, Kin: {losses['loss_kinship'].item():.3f})",
+                    f"Age: {losses['loss_age'].item():.3f}, Kin: {losses['loss_kinship'].item():.3f}) "
+                    f"| {speed:.1f} imgs/s | ETA: {eta_str}",
                     flush=True
                 )
 
@@ -186,13 +254,21 @@ def train_curriculum(
     output_checkpoint: str = "checkpoints/age_progression_curriculum.pt",
     max_samples: Optional[int] = None,
     manifest_phase4: Optional[str] = None,
+    num_workers: Optional[int] = None,
+    use_amp: bool = True,
+    large_scale: bool = False,
     **kwargs
 ):
     os.makedirs(os.path.dirname(output_checkpoint) or ".", exist_ok=True)
     config = AgeProgressionConfig(image_size=image_size, device=device)
     device_obj = torch.device(device)
 
-    print(f"[INFO] Initializing Curriculum Pipeline on {device} (Res: {image_size}x{image_size})...")
+    # In large scale GPU mode, optimize batch size if left at default minimum
+    if large_scale and device == "cuda" and batch_size <= 4:
+        batch_size = 16
+        print(f"[LARGE-SCALE] T4 GPU 가속 최적화를 위해 배치 크기를 {batch_size}로 자동 상향합니다.", flush=True)
+
+    print(f"[INFO] Initializing Curriculum Pipeline on {device} (Res: {image_size}x{image_size}, Batch: {batch_size})...")
     model = AgeProgressionModel(config).to(device_obj)
     loss_fn = TotalAgeProgressionLoss(config=config, id_encoder=model.id_encoder).to(device_obj)
 
@@ -231,7 +307,9 @@ def train_curriculum(
                     epochs=epochs_per_phase,
                     batch_size=batch_size,
                     device=device,
-                    loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0}
+                    loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0},
+                    num_workers=num_workers,
+                    use_amp=use_amp
                 )
                 safe_torch_save(model.state_dict(), ckpt_p1)
         else:
@@ -245,7 +323,9 @@ def train_curriculum(
                 epochs=epochs_per_phase,
                 batch_size=batch_size,
                 device=device,
-                loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0}
+                loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0},
+                num_workers=num_workers,
+                use_amp=use_amp
             )
             ckpt_p1 = f"{base_ckpt_no_ext}_phase1_foundation{ext}"
             safe_torch_save(model.state_dict(), ckpt_p1)
@@ -263,7 +343,7 @@ def train_curriculum(
                 model.load_state_dict(torch.load(ckpt_p2, map_location=device_obj))
                 print("[OK] Phase 2 가중치 로드 성공! Phase 3으로 즉시 이동합니다.", flush=True)
             except Exception:
-                ds2 = load_dataset_or_mock(manifest_phase2, image_size=image_size, num_mock=16, max_samples=max_samples)
+                ds2 = load_dataset_or_mock(manifest_phase2, image_size=image_size, num_mock=16, max_samples=max_samples, auto_large_scale=large_scale)
                 run_phase_training(
                     phase_num=2,
                     phase_name="Asian & Age Specialization (UTKFace / AFAD / AI Hub)",
@@ -273,11 +353,13 @@ def train_curriculum(
                     epochs=epochs_per_phase,
                     batch_size=batch_size,
                     device=device,
-                    loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5}
+                    loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5},
+                    num_workers=num_workers,
+                    use_amp=use_amp
                 )
                 safe_torch_save(model.state_dict(), ckpt_p2)
         else:
-            ds2 = load_dataset_or_mock(manifest_phase2, image_size=image_size, num_mock=16, max_samples=max_samples)
+            ds2 = load_dataset_or_mock(manifest_phase2, image_size=image_size, num_mock=16, max_samples=max_samples, auto_large_scale=large_scale)
             run_phase_training(
                 phase_num=2,
                 phase_name="Asian & Age Specialization (UTKFace / AFAD / AI Hub)",
@@ -287,7 +369,9 @@ def train_curriculum(
                 epochs=epochs_per_phase,
                 batch_size=batch_size,
                 device=device,
-                loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5}
+                loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5},
+                num_workers=num_workers,
+                use_amp=use_amp
             )
             ckpt_p2 = f"{base_ckpt_no_ext}_phase2_aging{ext}"
             safe_torch_save(model.state_dict(), ckpt_p2)
@@ -298,7 +382,7 @@ def train_curriculum(
     # Focus on Longitudinal ground truth (FG-NET) & Kinship guidance
     # -------------------------------------------------------------
     if 3 in phases:
-        ds3 = load_dataset_or_mock(manifest_phase3, image_size=image_size, num_mock=16, max_samples=max_samples)
+        ds3 = load_dataset_or_mock(manifest_phase3, image_size=image_size, num_mock=16, max_samples=max_samples, auto_large_scale=large_scale)
         run_phase_training(
             phase_num=3,
             phase_name="Kinship & Longitudinal Fusion (FG-NET & AI Hub Family)",
@@ -308,7 +392,9 @@ def train_curriculum(
             epochs=epochs_per_phase,
             batch_size=batch_size,
             device=device,
-            loss_weights={"recon": 1.0, "id": 2.0, "age": 1.5, "kinship": 1.5}
+            loss_weights={"recon": 1.0, "id": 2.0, "age": 1.5, "kinship": 1.5},
+            num_workers=num_workers,
+            use_amp=use_amp
         )
         ckpt_p3 = f"{base_ckpt_no_ext}_phase3_kinship{ext}"
         safe_torch_save(model.state_dict(), ckpt_p3)
@@ -320,7 +406,7 @@ def train_curriculum(
     # -------------------------------------------------------------
     if 4 in phases:
         m_p4_target = manifest_phase4 or kwargs.get("manifest_phase4", None) or manifest_phase2
-        ds4 = load_dataset_or_mock(m_p4_target, image_size=image_size, num_mock=16, max_samples=max_samples)
+        ds4 = load_dataset_or_mock(m_p4_target, image_size=image_size, num_mock=16, max_samples=max_samples, auto_large_scale=large_scale)
         run_phase_training(
             phase_num=4,
             phase_name="Hairstyle & Detail Tuning (AI Hub Hairstyle & Landmark)",
@@ -330,7 +416,9 @@ def train_curriculum(
             epochs=epochs_per_phase,
             batch_size=batch_size,
             device=device,
-            loss_weights={"recon": 1.5, "id": 3.0, "age": 1.0, "kinship": 1.0}
+            loss_weights={"recon": 1.5, "id": 3.0, "age": 1.0, "kinship": 1.0},
+            num_workers=num_workers,
+            use_amp=use_amp
         )
         ckpt_p4 = f"{base_ckpt_no_ext}_phase4_hairstyle{ext}"
         safe_torch_save(model.state_dict(), ckpt_p4)
@@ -355,6 +443,9 @@ if __name__ == "__main__":
     parser.add_argument("--manifest-phase4", type=str, default=None, help="Manifest for Phase 4")
     parser.add_argument("--resume-checkpoint", type=str, default=None, help="Resume training from an existing checkpoint")
     parser.add_argument("--output", "--save-path", dest="output", type=str, default="checkpoints/age_progression_curriculum.pt", help="Checkpoint output path")
+    parser.add_argument("--large-scale", action="store_true", help="Enable automatic multi-dataset large-scale aggregation and GPU AMP")
+    parser.add_argument("--num-workers", type=int, default=None, help="DataLoader num_workers")
+    parser.add_argument("--no-amp", action="store_true", help="Disable AMP")
     args = parser.parse_args()
 
     m_p2 = args.manifest if args.manifest else args.manifest_phase2
@@ -373,5 +464,8 @@ if __name__ == "__main__":
         output_checkpoint=args.output,
         max_samples=args.max_samples,
         manifest_phase4=m_p4,
-        resume_checkpoint=args.resume_checkpoint
+        resume_checkpoint=args.resume_checkpoint,
+        num_workers=args.num_workers,
+        use_amp=(not args.no_amp),
+        large_scale=args.large_scale
     )
