@@ -124,7 +124,8 @@ def run_phase_training(
     device: str = "cpu",
     loss_weights: Optional[Dict[str, float]] = None,
     num_workers: Optional[int] = None,
-    use_amp: bool = True
+    use_amp: bool = True,
+    **kwargs
 ):
     print("\n" + "=" * 78)
     print(f" [CURRICULUM LEARNING] Starting Phase {phase_num}: {phase_name}")
@@ -242,6 +243,19 @@ def run_phase_training(
         elapsed = time.time() - t0
         print(f"Phase {phase_num} Epoch [{epoch:02d}/{epochs:02d}] Finished! Avg Loss: {avg_loss:.4f} | Time: {elapsed:.2f}s", flush=True)
 
+        # Real-time persistence: Save after every single epoch to Google Drive
+        ckpt_dir = kwargs.get("checkpoint_dir", None)
+        if ckpt_dir:
+            os.makedirs(ckpt_dir, exist_ok=True)
+            live_ep_path = os.path.join(ckpt_dir, f"ckpt_phase{phase_num}_ep{epoch:02d}.pt")
+            live_latest_path = os.path.join(ckpt_dir, f"ckpt_phase{phase_num}_latest.pt")
+            try:
+                safe_torch_save(model.state_dict(), live_ep_path)
+                safe_torch_save(model.state_dict(), live_latest_path)
+                print(f"[CHECKPOINT] Phase {phase_num} Ep {epoch} 가중치 실시간 저장 완료 -> {live_latest_path}", flush=True)
+            except Exception as e:
+                print(f"[WARN] 실시간 체크포인트 저장 알림: {e}", flush=True)
+
 
 def train_curriculum(
     phases: List[int],
@@ -309,7 +323,8 @@ def train_curriculum(
                     device=device,
                     loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0},
                     num_workers=num_workers,
-                    use_amp=use_amp
+                    use_amp=use_amp,
+                    checkpoint_dir=os.path.dirname(os.path.abspath(output_checkpoint))
                 )
                 safe_torch_save(model.state_dict(), ckpt_p1)
         else:
@@ -325,7 +340,8 @@ def train_curriculum(
                 device=device,
                 loss_weights={"recon": 2.0, "id": 2.5, "age": 0.5, "kinship": 0.0},
                 num_workers=num_workers,
-                use_amp=use_amp
+                use_amp=use_amp,
+                checkpoint_dir=os.path.dirname(os.path.abspath(output_checkpoint))
             )
             ckpt_p1 = f"{base_ckpt_no_ext}_phase1_foundation{ext}"
             safe_torch_save(model.state_dict(), ckpt_p1)
@@ -355,7 +371,8 @@ def train_curriculum(
                     device=device,
                     loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5},
                     num_workers=num_workers,
-                    use_amp=use_amp
+                    use_amp=use_amp,
+                    checkpoint_dir=os.path.dirname(os.path.abspath(output_checkpoint))
                 )
                 safe_torch_save(model.state_dict(), ckpt_p2)
         else:
@@ -371,7 +388,8 @@ def train_curriculum(
                 device=device,
                 loss_weights={"recon": 1.0, "id": 2.0, "age": 2.0, "kinship": 0.5},
                 num_workers=num_workers,
-                use_amp=use_amp
+                use_amp=use_amp,
+                checkpoint_dir=os.path.dirname(os.path.abspath(output_checkpoint))
             )
             ckpt_p2 = f"{base_ckpt_no_ext}_phase2_aging{ext}"
             safe_torch_save(model.state_dict(), ckpt_p2)
@@ -394,7 +412,8 @@ def train_curriculum(
             device=device,
             loss_weights={"recon": 1.0, "id": 2.0, "age": 1.5, "kinship": 1.5},
             num_workers=num_workers,
-            use_amp=use_amp
+            use_amp=use_amp,
+            checkpoint_dir=os.path.dirname(os.path.abspath(output_checkpoint))
         )
         ckpt_p3 = f"{base_ckpt_no_ext}_phase3_kinship{ext}"
         safe_torch_save(model.state_dict(), ckpt_p3)
@@ -418,7 +437,8 @@ def train_curriculum(
             device=device,
             loss_weights={"recon": 1.5, "id": 3.0, "age": 1.0, "kinship": 1.0},
             num_workers=num_workers,
-            use_amp=use_amp
+            use_amp=use_amp,
+            checkpoint_dir=os.path.dirname(os.path.abspath(output_checkpoint))
         )
         ckpt_p4 = f"{base_ckpt_no_ext}_phase4_hairstyle{ext}"
         safe_torch_save(model.state_dict(), ckpt_p4)
